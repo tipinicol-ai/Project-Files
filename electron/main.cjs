@@ -25,9 +25,18 @@ async function listDirectory(folderPath) {
 }
 
 function createWindow() {
-  const win = new BrowserWindow({ width: 1440, height: 860, minWidth: 960, minHeight: 640, title: 'Project Files', backgroundColor: '#101a2a', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } })
+  const win = new BrowserWindow({ show: false, width: 1440, height: 860, minWidth: 960, minHeight: 640, title: 'Project Files', backgroundColor: '#101a2a', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } })
   win.removeMenu()
-  win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
+  const entry = path.join(app.getAppPath(), 'dist', 'index.html')
+  const showLoadError = (details) => {
+    const safeDetails = String(details).replace(/[&<>\"]/g, (value) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;' }[value]))
+    win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><html><body style="margin:0;background:#101a2a;color:#e7edf7;font:14px Segoe UI,Arial;padding:48px"><h2>Project Files no pudo iniciar</h2><p>El programa no pudo cargar sus recursos. Cierra esta ventana y vuelve a instalar la versión más reciente.</p><pre style="color:#9aaac1;white-space:pre-wrap">${safeDetails}</pre></body></html>`)}`)
+  }
+  win.webContents.once('did-finish-load', () => win.show())
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => showLoadError(`${errorCode}: ${errorDescription}\n${validatedURL}`))
+  win.webContents.on('render-process-gone', (_event, details) => showLoadError(`Renderer: ${details.reason}`))
+  if (!existsSync(entry)) showLoadError(`No se encontró ${entry}`)
+  else win.loadFile(entry)
 }
 
 ipcMain.handle('choose-folder', async () => {
