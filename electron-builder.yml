@@ -1,0 +1,29 @@
+appId: com.projectfiles.desktop
+productName: Project Files
+artifactName: Project-Files-Setup-${version}.${ext}
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - electron/**
+  - package.json
+asar: true
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  legalTrademarks: Project Files
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Project Files
+  menuCategory: Project Files
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  uninstallDisplayName: Project Files

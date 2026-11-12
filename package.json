@@ -3,11 +3,15 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "main": "electron/main.cjs",
+  "description": "Administrador de archivos y proyectos para Windows",
+  "author": "Project Files",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 3000",
-    "test": "node --test tests/security.test.mjs"
+    "test": "node --test tests/security.test.mjs",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --config electron-builder.yml"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
@@ -19,6 +23,8 @@
   "devDependencies": {
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
     "typescript": "latest"
   }
 }
