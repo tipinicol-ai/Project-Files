@@ -189,6 +189,23 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .toast svg { color: #6fe0c0; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 
+.copy-overlay { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; background: rgba(3, 9, 17, .58); backdrop-filter: blur(3px); }
+.copy-dialog { width: min(430px, calc(100vw - 38px)); padding: 24px; border: 1px solid rgba(116, 214, 239, .28); border-radius: 10px; background: linear-gradient(145deg, #182b43, #101c2d); box-shadow: 0 24px 70px rgba(0,0,0,.56), 0 0 0 1px rgba(17, 38, 59, .8); }
+.copy-dialog-icon { width: 51px; height: 51px; display: grid; place-items: center; margin-bottom: 13px; border-radius: 13px; color: #7fe5f4; background: rgba(78, 190, 222, .14); border: 1px solid rgba(115, 217, 239, .3); }
+.copy-dialog-icon.done { color: #7ce0b2; background: rgba(71, 194, 143, .14); border-color: rgba(106, 224, 174, .32); }
+.copy-dialog-icon.error { color: #ff9da5; background: rgba(218, 96, 113, .14); border-color: rgba(239, 134, 145, .32); }
+.copy-dialog-title { color: #f0f7ff; font-size: 16px; font-weight: 600; }
+.copy-dialog-subtitle { margin-top: 5px; color: #91a9c2; font-size: 11px; }
+.copy-progress { height: 6px; margin: 19px 0 17px; overflow: hidden; border-radius: 10px; background: #273c55; }
+.copy-progress span { display: block; width: 42%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #48c4e2, #8ce8f4); animation: copy-progress 1.15s ease-in-out infinite; }
+@keyframes copy-progress { 0% { transform: translateX(-110%); } 100% { transform: translateX(270%); } }
+.copy-dialog-destination { display: flex; flex-direction: column; gap: 5px; margin-top: 17px; padding: 10px; border-radius: 6px; background: rgba(4, 12, 23, .35); }
+.copy-dialog-destination span { color: #7189a4; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.copy-dialog-destination strong { overflow: hidden; color: #cbdced; font-size: 11px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.copy-dialog-items { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 13px; }
+.copy-dialog-items span { max-width: 180px; overflow: hidden; padding: 4px 7px; border: 1px solid rgba(135, 174, 207, .16); border-radius: 4px; color: #a9bfd4; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.copy-close { width: 100%; margin-top: 18px; }
+
 @media (max-width: 1050px) {
   .desktop-stage { padding: 0; }
   .app-window { height: 100vh; min-height: 560px; border-radius: 0; }

@@ -162,6 +162,7 @@ function App() {
   const [query, setQuery] = useState('')
   const [clipboard, setClipboard] = useState<{ ids: string[]; mode: 'copy' | 'move' } | null>(null)
   const [toast, setToast] = useState('')
+  const [copyDialog, setCopyDialog] = useState<{ mode: 'copy' | 'move'; names: string[]; status: 'working' | 'done' | 'error'; message: string } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [repoDownloaded, setRepoDownloaded] = useState<Record<string, string>>({})
   const [repoData, setRepoData] = useState<Repo[]>(nativeMode ? [] : repos)
@@ -375,8 +376,11 @@ function App() {
     if (!clipboard?.ids.length) return notify('No hay elementos copiados')
     if (nativeMode && window.projectFilesNative) {
       const paths = clipboard.ids.map((id) => items[id]?.path).filter(Boolean) as string[]
+      const names = clipboard.ids.map((id) => items[id]?.name).filter(Boolean) as string[]
+      const operationMode = clipboard.mode
+      setCopyDialog({ mode: operationMode, names, status: 'working', message: 'Preparando la operación…' })
       const operation = clipboard.mode === 'move' ? window.projectFilesNative.move(paths, currentFolderId) : window.projectFilesNative.copy(paths, currentFolderId)
-      void operation.then(() => refreshNativeFolder()).then(() => { setClipboard(null); notify(clipboard.mode === 'move' ? 'Elementos movidos' : 'Elementos copiados') }).catch((error) => notify(`No se pudo completar la operación: ${error.message}`))
+      void operation.then(() => refreshNativeFolder()).then(() => { setClipboard(null); setCopyDialog({ mode: operationMode, names, status: 'done', message: operationMode === 'move' ? 'Movimiento completado correctamente' : 'Copia completada correctamente' }); notify(operationMode === 'move' ? 'Elementos movidos' : 'Elementos copiados') }).catch((error) => { setCopyDialog({ mode: operationMode, names, status: 'error', message: error instanceof Error ? error.message : 'No se pudo completar la operación' }); notify(`No se pudo completar la operación: ${error instanceof Error ? error.message : 'error desconocido'}`) })
       return
     }
     setItems((previous) => {
@@ -607,6 +611,8 @@ function App() {
         {items[contextMenu.id]?.extension === '.zip' && <button onClick={() => { extractZip(contextMenu.id); setContextMenu(null) }}><FileArchive size={15} />Extraer aquí</button>}
         <button className="danger-menu" onClick={() => { deleteSelected([contextMenu.id]); setContextMenu(null) }}><Trash2 size={15} />Enviar a la Papelera</button>
       </div>}
+
+      {copyDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Progreso de copia"><div className="copy-dialog"><div className={`copy-dialog-icon ${copyDialog.status}`}><Copy size={25} /></div><div className="copy-dialog-title">{copyDialog.mode === 'move' ? 'Moviendo elementos' : 'Copiando elementos'}</div><div className="copy-dialog-subtitle">{copyDialog.message}</div>{copyDialog.status === 'working' && <div className="copy-progress"><span /></div>}<div className="copy-dialog-destination"><span>Destino</span><strong>{currentFolder?.path ?? currentFolder?.name ?? 'Ubicación actual'}</strong></div><div className="copy-dialog-items">{copyDialog.names.slice(0, 4).map((name) => <span key={name}>{name}</span>)}{copyDialog.names.length > 4 && <span>+ {copyDialog.names.length - 4} más</span>}</div>{copyDialog.status !== 'working' && <button className="primary-action copy-close" onClick={() => setCopyDialog(null)}>{copyDialog.status === 'done' ? 'Listo' : 'Cerrar'}</button>}</div></div>}
 
       {toast && <div className="toast"><Check size={16} />{toast}</div>}
     </main>
