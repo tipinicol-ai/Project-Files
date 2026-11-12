@@ -61,6 +61,7 @@ type FileItem = {
   parentId: string | null
   children?: string[]
   extension?: string
+  path?: string
 }
 
 type Repo = {
@@ -95,6 +96,12 @@ const repos: Repo[] = [
   { id: 'repo2', name: 'launch-assets', owner: 'mi-cuenta', description: 'Recursos creativos para la campaña de lanzamiento.', language: '—', branch: 'main', visibility: 'Público', updated: 'Ayer, 4:18 PM', size: 38_400_000, localPath: 'No descargado', tags: ['Marketing', 'Assets'] },
   { id: 'repo3', name: 'client-dashboard', owner: 'mi-cuenta', description: 'Dashboard de reportes para clientes y entregables.', language: 'React', branch: 'develop', visibility: 'Privado', updated: '08/11/2026', size: 12_800_000, localPath: 'No descargado', tags: ['Client', 'Dashboard'] },
 ]
+
+const nativeMode = typeof window !== 'undefined' && Boolean(window.projectFilesNative)
+
+function nativePathName(filePath: string) {
+  return filePath.split(/[\\/]/).filter(Boolean).pop() ?? filePath
+}
 
 function formatBytes(bytes: number) {
   if (bytes === 0) return '—'
@@ -141,7 +148,7 @@ function App() {
   const [currentFolderId, setCurrentFolderId] = useState('root')
   const [navigation, setNavigation] = useState(['root'])
   const [navigationIndex, setNavigationIndex] = useState(0)
-  const [selection, setSelection] = useState<string[]>(['q4'])
+  const [selection, setSelection] = useState<string[]>(nativeMode ? [] : ['q4'])
   const [repoSelection, setRepoSelection] = useState<string[]>([])
   const [section, setSection] = useState<Section>('files')
   const [viewMode, setViewMode] = useState<ViewMode>('list')
@@ -152,6 +159,7 @@ function App() {
   const [toast, setToast] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [repoDownloaded, setRepoDownloaded] = useState<Record<string, string>>({})
+  const [nativeLoading, setNativeLoading] = useState(nativeMode)
 
   const currentFolder = items[currentFolderId]
   const selectedItems = selection.map((id) => items[id]).filter(Boolean)
@@ -196,7 +204,63 @@ function App() {
 
   const notify = (message: string) => setToast(message)
 
+  const refreshNativeFolder = async (folderPath = currentFolderId, pushHistory = false) => {
+    if (!window.projectFilesNative) return
+    setNativeLoading(true)
+    try {
+      const entries = await window.projectFilesNative.listDirectory(folderPath)
+      const parentPath = items[folderPath]?.parentId ?? (folderPath.split(/[\\/]/).slice(0, -1).join(folderPath.includes('\\') ? '\\' : '/') || null)
+      const folder: FileItem = { id: folderPath, path: folderPath, name: nativePathName(folderPath), kind: 'folder', type: 'Carpeta', size: entries.reduce((sum, entry) => sum + (entry.kind === 'file' ? entry.size : 0), 0), modified: '', created: '', description: folderPath, tags: [], parentId: parentPath, children: entries.map((entry) => entry.path) }
+      setItems((previous) => {
+        const next = { ...previous, [folderPath]: folder }
+        entries.forEach((entry) => { next[entry.path] = { id: entry.path, path: entry.path, name: entry.name, kind: entry.kind, type: entry.type, extension: entry.extension || '', size: entry.size, modified: entry.modified, created: entry.created, description: entry.path, tags: [], parentId: folderPath, children: entry.kind === 'folder' ? [] : undefined } })
+        return next
+      })
+      setCurrentFolderId(folderPath)
+      setSelection([])
+      setQuery('')
+      if (pushHistory) {
+        const next = [...navigation.slice(0, navigationIndex + 1), folderPath]
+        setNavigation(next)
+        setNavigationIndex(next.length - 1)
+      }
+    } catch (error) {
+      notify(`No se pudo leer la carpeta: ${error instanceof Error ? error.message : 'permiso denegado'}`)
+    } finally { setNativeLoading(false) }
+  }
+
+  const refreshNativeDrives = async () => {
+    if (!window.projectFilesNative) return
+    setNativeLoading(true)
+    try {
+      const drives = await window.projectFilesNative.getDrives()
+      const computer: FileItem = { id: 'computer', name: 'Este equipo', kind: 'folder', type: 'Equipo', size: 0, modified: '', created: '', description: 'Discos y unidades conectados a este PC', tags: [], parentId: null, children: drives.map((drive) => drive.path) }
+      setItems((previous) => {
+        const next: Record<string, FileItem> = { ...previous, computer }
+        drives.forEach((drive) => { next[drive.path] = { id: drive.path, path: drive.path, name: drive.name, kind: 'folder', type: 'Unidad', size: 0, modified: '', created: '', description: drive.path, tags: [], parentId: 'computer', children: [] } })
+        return next
+      })
+      setCurrentFolderId('computer')
+      setNavigation(['computer'])
+      setNavigationIndex(0)
+      setSelection([])
+      setQuery('')
+    } catch (error) { notify(`No se pudieron detectar los discos: ${error instanceof Error ? error.message : 'error desconocido'}`) }
+    finally { setNativeLoading(false) }
+  }
+
+  useEffect(() => {
+    if (!nativeMode || !window.projectFilesNative) return
+    void refreshNativeDrives()
+    document.body.classList.add('native-app')
+    return () => document.body.classList.remove('native-app')
+  }, [])
+
   const goToFolder = (id: string, fromHistory = false) => {
+    if (nativeMode) {
+      void refreshNativeFolder(id, !fromHistory)
+      return
+    }
     if (!items[id] || items[id].kind !== 'folder') return
     setCurrentFolderId(id)
     setSelection([])
@@ -227,6 +291,10 @@ function App() {
   const createFolder = () => {
     const name = window.prompt('Nombre de la nueva carpeta', 'Nueva carpeta')?.trim()
     if (!name) return
+    if (nativeMode && window.projectFilesNative) {
+      void window.projectFilesNative.createFolder(currentFolderId, name).then(() => refreshNativeFolder()).then(() => notify(`Carpeta “${name}” creada`)).catch((error) => notify(`No se pudo crear la carpeta: ${error.message}`))
+      return
+    }
     const id = `folder-${Date.now()}`
     setItems((previous) => ({ ...previous, [id]: { id, name, kind: 'folder', type: 'Carpeta', size: 0, modified: 'Ahora', created: 'Ahora', description: 'Carpeta creada desde Project Files.', tags: [], parentId: currentFolderId, children: [] }, [currentFolderId]: { ...previous[currentFolderId], children: [...(previous[currentFolderId].children ?? []), id] } }))
     notify(`Carpeta “${name}” creada`)
@@ -237,6 +305,10 @@ function App() {
     if (!item) return
     const name = window.prompt('Nuevo nombre', item.name)?.trim()
     if (!name || name === item.name) return
+    if (nativeMode && window.projectFilesNative && item.path) {
+      void window.projectFilesNative.rename(item.path, name).then(() => refreshNativeFolder()).then(() => notify(`“${item.name}” ahora se llama “${name}”`)).catch((error) => notify(`No se pudo cambiar el nombre: ${error.message}`))
+      return
+    }
     setItems((previous) => ({ ...previous, [id]: { ...previous[id], name, modified: 'Ahora' } }))
     notify(`“${item.name}” ahora se llama “${name}”`)
   }
@@ -252,6 +324,10 @@ function App() {
     if (!ids.length) return
     const names = ids.map((id) => items[id]?.name).filter(Boolean).join(', ')
     if (!window.confirm(`¿Enviar a la Papelera estos elementos?\n\n${names}`)) return
+    if (nativeMode && window.projectFilesNative) {
+      void Promise.all(ids.map((id) => items[id]?.path ? window.projectFilesNative!.trash(items[id].path!) : Promise.resolve())).then(() => refreshNativeFolder()).then(() => notify('Elementos enviados a la Papelera')).catch((error) => notify(`No se pudieron enviar a la Papelera: ${error.message}`))
+      return
+    }
     setItems((previous) => {
       const next = { ...previous }
       ids.forEach((id) => {
@@ -267,6 +343,12 @@ function App() {
 
   const paste = () => {
     if (!clipboard?.ids.length) return notify('No hay elementos copiados')
+    if (nativeMode && window.projectFilesNative) {
+      const paths = clipboard.ids.map((id) => items[id]?.path).filter(Boolean) as string[]
+      const operation = clipboard.mode === 'move' ? window.projectFilesNative.move(paths, currentFolderId) : window.projectFilesNative.copy(paths, currentFolderId)
+      void operation.then(() => refreshNativeFolder()).then(() => { setClipboard(null); notify(clipboard.mode === 'move' ? 'Elementos movidos' : 'Elementos copiados') }).catch((error) => notify(`No se pudo completar la operación: ${error.message}`))
+      return
+    }
     setItems((previous) => {
       const next = { ...previous }
       const pastedIds = clipboard.ids.map((id) => {
@@ -291,6 +373,12 @@ function App() {
     const name = window.prompt('Nombre del archivo ZIP', 'project-files.zip')?.trim()
     if (!name) return
     const archiveName = name.toLowerCase().endsWith('.zip') ? name : `${name}.zip`
+    if (nativeMode && window.projectFilesNative) {
+      const destination = `${currentFolderId.replace(/[\\/]$/, '')}${currentFolderId.includes('\\') ? '\\' : '/'}${archiveName}`
+      const paths = ids.map((id) => items[id]?.path).filter(Boolean) as string[]
+      void window.projectFilesNative.compress(paths, destination).then(() => refreshNativeFolder()).then(() => notify(`“${archiveName}” creado sin modificar los originales`)).catch((error) => notify(`No se pudo crear el ZIP: ${error.message}`))
+      return
+    }
     const id = `zip-${Date.now()}`
     const total = ids.reduce((sum, itemId) => sum + getFolderSize(itemId, items), 0)
     setItems((previous) => ({ ...previous, [id]: { id, name: archiveName, kind: 'file', type: 'Archivo ZIP', extension: '.zip', size: Math.max(1024, Math.round(total * 0.62)), modified: 'Ahora', created: 'Ahora', description: `Archivo comprimido con ${ids.length} elemento(s).`, tags: ['ZIP'], parentId: currentFolderId }, [currentFolderId]: { ...previous[currentFolderId], children: [...(previous[currentFolderId].children ?? []), id] } }))
@@ -302,6 +390,11 @@ function App() {
     if (!archive || archive.extension !== '.zip') return notify('Selecciona un archivo ZIP')
     const folderId = `extract-${Date.now()}`
     const folderName = archive.name.replace(/\.zip$/i, '')
+    if (nativeMode && window.projectFilesNative && archive.path) {
+      const destination = `${currentFolderId.replace(/[\\/]$/, '')}${currentFolderId.includes('\\') ? '\\' : '/'}${folderName}`
+      void window.projectFilesNative.extract(archive.path, destination).then(() => refreshNativeFolder()).then(() => notify(`Contenido de “${archive.name}” extraído aquí`)).catch((error) => notify(`No se pudo extraer el ZIP: ${error.message}`))
+      return
+    }
     setItems((previous) => ({ ...previous, [folderId]: { id: folderId, name: folderName, kind: 'folder', type: 'Carpeta', size: 0, modified: 'Ahora', created: 'Ahora', description: `Contenido extraído de ${archive.name}.`, tags: ['Extraído'], parentId: currentFolderId, children: [] }, [currentFolderId]: { ...previous[currentFolderId], children: [...(previous[currentFolderId].children ?? []), folderId] } }))
     notify(`Contenido de “${archive.name}” extraído aquí`)
   }
@@ -316,6 +409,7 @@ function App() {
 
   const openSelected = (item: FileItem) => {
     if (item.kind === 'folder') goToFolder(item.id)
+    else if (nativeMode && window.projectFilesNative && item.path) void window.projectFilesNative.openDefault(item.path).then((error) => error && notify(error)).catch((error) => notify(`No se pudo abrir el archivo: ${error.message}`))
     else notify(`Abriendo “${item.name}” con el programa predeterminado`)
   }
 
@@ -351,13 +445,13 @@ function App() {
             <span>Project Files</span>
           </div>
           <div className="window-caption">Administrador de archivos</div>
-          <div className="window-controls" aria-label="Controles de ventana"><span>—</span><span>□</span><span className="close">×</span></div>
+          <div className="window-controls" aria-label="Controles de ventana"><button aria-label="Minimizar" onClick={() => window.projectFilesNative?.minimize()}>—</button><button aria-label="Maximizar" onClick={() => window.projectFilesNative?.toggleMaximize()}>□</button><button aria-label="Cerrar" className="close" onClick={() => window.projectFilesNative?.close()}>×</button></div>
         </header>
 
         <div className="toolbar">
           <div className="toolbar-actions">
             <button className="toolbar-button" onClick={createFolder}><FolderPlus size={17} />Nueva carpeta</button>
-            <button className="toolbar-button" onClick={() => notify('Importador listo: el adaptador nativo conectará archivos reales')}><Upload size={17} />Importar archivos</button>
+            <button className="toolbar-button" onClick={() => { if (nativeMode && window.projectFilesNative) void window.projectFilesNative.chooseFiles().then((paths) => paths.length ? window.projectFilesNative!.copy(paths, currentFolderId).then(() => refreshNativeFolder()) : undefined).catch((error) => notify(`No se pudieron importar los archivos: ${error.message}`)); else notify('Selecciona una carpeta real desde el instalador de Windows') }}><Upload size={17} />Importar archivos</button>
           </div>
           <div className="search-wrap"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar..." /><kbd>Ctrl F</kbd>{query && <button className="clear-search" onClick={() => setQuery('')}><X size={14} /></button>}</div>
           <div className="toolbar-actions toolbar-right">
@@ -372,21 +466,27 @@ function App() {
           <aside className="sidebar">
             <div className="sidebar-heading">Mi equipo</div>
             <nav className="nav-list">
-              <button className={section === 'files' && currentFolderId === 'root' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); goToFolder('root') }}><Home size={16} />Inicio</button>
-              <button className={section === 'files' && currentFolderId === 'q4' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); goToFolder('q4') }}><FolderOpen size={16} />Project Archives</button>
-              <button className="nav-item" onClick={() => { setSection('files'); goToFolder('root'); setQuery('Documentos') }}><FileText size={16} />Documentos</button>
-              <button className="nav-item" onClick={() => { setSection('files'); goToFolder('root'); setQuery('') }}><HardDrive size={16} />Este equipo</button>
-              <button className={section === 'github' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('github'); setRepoSelection(['repo1']); setSelection([]) }}><GitBranch size={16} />Proyectos de GitHub</button>
-              <button className="nav-item" onClick={() => notify('Las etiquetas locales se mostrarán aquí')}><Tag size={16} />Etiquetas</button>
-              <button className="nav-item" onClick={() => document.querySelector<HTMLInputElement>('.search-wrap input')?.focus()}><Search size={16} />Buscar</button>
+              {nativeMode ? <>
+                <button className={section === 'files' && currentFolderId === 'computer' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); void refreshNativeDrives() }}><Home size={16} />Este equipo</button>
+                <button className="nav-item" onClick={() => { if (window.projectFilesNative) void window.projectFilesNative.chooseFolder().then((folder) => { if (folder) return refreshNativeFolder(folder, true) }) }}><FolderOpen size={16} />Abrir carpeta</button>
+                <button className="nav-item" onClick={() => document.querySelector<HTMLInputElement>('.search-wrap input')?.focus()}><Search size={16} />Buscar</button>
+              </> : <>
+                <button className={section === 'files' && currentFolderId === 'root' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); goToFolder('root') }}><Home size={16} />Inicio</button>
+                <button className={section === 'files' && currentFolderId === 'q4' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); goToFolder('q4') }}><FolderOpen size={16} />Project Archives</button>
+                <button className="nav-item" onClick={() => { setSection('files'); goToFolder('root'); setQuery('Documentos') }}><FileText size={16} />Documentos</button>
+                <button className="nav-item" onClick={() => { setSection('files'); goToFolder('root'); setQuery('') }}><HardDrive size={16} />Este equipo</button>
+                <button className={section === 'github' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('github'); setRepoSelection(['repo1']); setSelection([]) }}><GitBranch size={16} />Proyectos de GitHub</button>
+                <button className="nav-item" onClick={() => notify('Las etiquetas locales se mostrarán aquí')}><Tag size={16} />Etiquetas</button>
+                <button className="nav-item" onClick={() => document.querySelector<HTMLInputElement>('.search-wrap input')?.focus()}><Search size={16} />Buscar</button>
+              </>}
             </nav>
             <div className="sidebar-divider" />
             <div className="sidebar-heading recent-heading">Carpetas recientes <MoreHorizontal size={15} /></div>
             <div className="recent-list">
-              {['Q4 Marketing Plan', 'Client Presentations', 'Design Assets'].map((label) => <button key={label} className="recent-item" onClick={() => notify(`Ruta reciente: ${label}`)}><Folder size={15} fill="#eab64a" color="#f4c45d" />{label}</button>)}
+              {nativeMode ? <button className="recent-item" onClick={() => window.projectFilesNative?.chooseFolder().then((folder) => { if (folder) return refreshNativeFolder(folder, true) })}><Folder size={15} fill="#eab64a" color="#f4c45d" />Elegir ubicación</button> : ['Q4 Marketing Plan', 'Client Presentations', 'Design Assets'].map((label) => <button key={label} className="recent-item" onClick={() => notify(`Ruta reciente: ${label}`)}><Folder size={15} fill="#eab64a" color="#f4c45d" />{label}</button>)}
             </div>
             <div className="sidebar-spacer" />
-            <div className="storage-card"><div className="storage-title"><Cloud size={15} /> Almacenamiento local</div><div className="storage-bar"><span /></div><div className="storage-meta"><span>68.4 GB usados</span><span>256 GB</span></div></div>
+            <div className="storage-card"><div className="storage-title"><Cloud size={15} /> {nativeMode ? 'Unidades reales' : 'Almacenamiento local'}</div>{nativeMode ? <div className="storage-meta"><span>Discos del PC</span><span>Actualizado</span></div> : <><div className="storage-bar"><span /></div><div className="storage-meta"><span>68.4 GB usados</span><span>256 GB</span></div></>}</div>
           </aside>
 
           <section className="content-panel">
@@ -396,10 +496,10 @@ function App() {
               </div>
               <div className="content-actions">
                 {section === 'files' && <><button className="round-action" title="Pegar" onClick={paste}><Clipboard size={15} /></button><button className="round-action" title="Subir un nivel" onClick={() => currentFolder?.parentId && goToFolder(currentFolder.parentId)}><ArrowUp size={15} /></button></>}
-                <button className="round-action" title="Actualizar" onClick={() => notify('Carpeta actualizada')}><RefreshCw size={15} /></button>
+                <button className="round-action" title="Actualizar" onClick={() => nativeMode ? (currentFolderId === 'computer' ? refreshNativeDrives() : refreshNativeFolder()) : notify('Carpeta actualizada')}><RefreshCw size={15} /></button>
               </div>
             </div>
-            <div className="content-title-row"><div><h1>{section === 'github' ? 'Mis repositorios' : currentFolder.name}</h1><p>{section === 'github' ? 'Descarga copias locales de tus proyectos' : query ? `${visibleItems.length} resultado(s) para “${query}”` : `${visibleItems.length} elementos`}</p></div><div className="sort-select"><span>Ordenar por</span><button onClick={() => setSortKey(sortKey === 'name' ? 'modified' : sortKey === 'modified' ? 'size' : 'name')}>{sortKey === 'name' ? 'Nombre' : sortKey === 'modified' ? 'Fecha' : 'Tamaño'} <ChevronDown size={13} /></button></div></div>
+            <div className="content-title-row"><div><h1>{section === 'github' ? 'Mis repositorios' : currentFolder?.name ?? (nativeLoading ? 'Cargando…' : 'Mi equipo')}</h1><p>{section === 'github' ? 'Descarga copias locales de tus proyectos' : query ? `${visibleItems.length} resultado(s) para “${query}”` : `${visibleItems.length} elementos`}</p></div><div className="sort-select"><span>Ordenar por</span><button onClick={() => setSortKey(sortKey === 'name' ? 'modified' : sortKey === 'modified' ? 'size' : 'name')}>{sortKey === 'name' ? 'Nombre' : sortKey === 'modified' ? 'Fecha' : 'Tamaño'} <ChevronDown size={13} /></button></div></div>
 
             {section === 'github' ? <div className="file-list github-list">
               <div className="list-head"><span className="name-head">Nombre</span><span>Lenguaje</span><span>Última actualización</span><span>Visibilidad</span><span>Tamaño</span></div>
@@ -415,7 +515,7 @@ function App() {
               {visibleItems.length > 0 && <div className="list-footer"><span>{visibleItems.length} elementos</span><span>{clipboard ? `${clipboard.mode === 'copy' ? 'Copiado' : 'Cortado'}: ${clipboard.ids.length}` : 'Listo'}</span></div>}
             </div>}
 
-            <div className="bottom-status"><div><span className="status-dot" /> Conectado a almacenamiento local</div><div>Vista protegida <ShieldCheck size={13} /></div></div>
+            <div className="bottom-status"><div><span className="status-dot" /> {nativeMode ? 'Conectado al sistema de archivos de Windows' : 'Modo Preview'}</div><div>{nativeMode ? 'Acceso nativo' : 'Datos de demostración'} <ShieldCheck size={13} /></div></div>
           </section>
 
           <aside className="details-panel">
@@ -435,7 +535,7 @@ function App() {
           </aside>
         </div>
 
-        <footer className="app-footer"><span><Zap size={13} /> Project Files</span><span>Administrador local de archivos</span><span>v0.1 Preview</span></footer>
+        <footer className="app-footer"><span><Zap size={13} /> Project Files</span><span>Administrador local de archivos</span><span>{nativeMode ? 'v0.2.0 Windows' : 'v0.2.0 Preview'}</span></footer>
       </section>
 
       {contextMenu && <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>

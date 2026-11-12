@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('projectFilesNative', {
   platform: process.platform,
+  minimize: () => ipcRenderer.send('window-minimize'),
+  toggleMaximize: () => ipcRenderer.send('window-toggle-maximize'),
+  close: () => ipcRenderer.send('window-close'),
   chooseFolder: () => ipcRenderer.invoke('choose-folder'),
   listDirectory: (folderPath) => ipcRenderer.invoke('list-directory', folderPath),
   openDefault: (filePath) => ipcRenderer.invoke('open-default', filePath),
