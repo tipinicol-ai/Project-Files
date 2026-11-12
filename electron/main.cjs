@@ -48,7 +48,7 @@ async function listDirectory(folderPath) {
 }
 
 function createWindow() {
-  const win = new BrowserWindow({ show: false, width: 1440, height: 860, minWidth: 960, minHeight: 640, title: 'Project Files', backgroundColor: '#101a2a', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } })
+  const win = new BrowserWindow({ show: false, frame: false, width: 1440, height: 860, minWidth: 960, minHeight: 640, title: 'Project Files', backgroundColor: '#101a2a', webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false } })
   win.removeMenu()
   const entry = path.join(app.getAppPath(), 'dist', 'index.html')
   const showLoadError = (details) => {

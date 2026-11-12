@@ -33,12 +33,13 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .desktop-stage::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(116, 194, 234, .04) 1px, transparent 1px), linear-gradient(rgba(116, 194, 234, .025) 1px, transparent 1px); background-size: 40px 40px; mask-image: linear-gradient(to bottom, transparent 8%, black 45%, transparent 94%); pointer-events: none; }
 .app-window { width: min(1400px, 100%); height: min(820px, 88vh); min-height: 600px; position: relative; display: flex; flex-direction: column; overflow: hidden; background: var(--window); border: 1px solid rgba(178, 205, 234, .2); border-radius: 8px; box-shadow: 0 30px 70px rgba(0, 0, 0, .5), 0 0 0 1px rgba(6, 12, 21, .55); }
 
-.titlebar { height: 43px; display: flex; align-items: center; padding: 0 15px 0 14px; border-bottom: 1px solid rgba(137, 164, 196, .12); background: rgba(11, 20, 34, .84); flex-shrink: 0; }
+.titlebar { height: 43px; display: flex; align-items: center; padding: 0 15px 0 14px; border-bottom: 1px solid rgba(137, 164, 196, .12); background: rgba(11, 20, 34, .84); flex-shrink: 0; -webkit-app-region: drag; }
 .brand-lockup { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
 .app-mark { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 5px; background: linear-gradient(145deg, #244a69, #1a2940); border: 1px solid rgba(126, 220, 241, .3); }
 .window-caption { flex: 1; text-align: center; color: #71849c; font-size: 11px; opacity: .64; }
 .window-controls { height: 100%; display: flex; align-items: center; gap: 22px; color: #97a6ba; font-size: 14px; }
 .window-controls button { display: grid; place-items: center; width: 23px; height: 23px; padding: 0; background: transparent; color: #97a6ba; opacity: .8; }
+.window-controls, .window-controls button { -webkit-app-region: no-drag; }
 .window-controls button:hover { background: rgba(120, 158, 197, .14); opacity: 1; }
 .window-controls .close { font-size: 21px; line-height: 1; font-weight: 300; }
 .window-controls .close:hover { color: #ff9ca3; }
