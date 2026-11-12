@@ -2,10 +2,13 @@ const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('projectFilesNative', {
   platform: process.platform,
+  getDrives: () => ipcRenderer.invoke('get-drives'),
+  getHomePath: () => ipcRenderer.invoke('get-home-path'),
   minimize: () => ipcRenderer.send('window-minimize'),
   toggleMaximize: () => ipcRenderer.send('window-toggle-maximize'),
   close: () => ipcRenderer.send('window-close'),
   chooseFolder: () => ipcRenderer.invoke('choose-folder'),
+  chooseFiles: () => ipcRenderer.invoke('choose-files'),
   listDirectory: (folderPath) => ipcRenderer.invoke('list-directory', folderPath),
   openDefault: (filePath) => ipcRenderer.invoke('open-default', filePath),
   showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
@@ -15,4 +18,10 @@ contextBridge.exposeInMainWorld('projectFilesNative', {
   trash: (filePath) => ipcRenderer.invoke('trash', filePath),
   rename: (filePath, name) => ipcRenderer.invoke('rename', filePath, name),
   readMetadata: (filePath) => ipcRenderer.invoke('read-metadata', filePath),
+  compress: (sourcePaths, destinationZip) => ipcRenderer.invoke('compress', sourcePaths, destinationZip),
+  extract: (archivePath, destinationPath) => ipcRenderer.invoke('extract', archivePath, destinationPath),
+  loadState: () => ipcRenderer.invoke('load-state'),
+  saveState: (state) => ipcRenderer.invoke('save-state', state),
+  githubList: (username, token) => ipcRenderer.invoke('github-list', username, token),
+  githubClone: (cloneUrl, destinationPath) => ipcRenderer.invoke('github-clone', cloneUrl, destinationPath),
 })

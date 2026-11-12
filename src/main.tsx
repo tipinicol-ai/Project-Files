@@ -76,6 +76,7 @@ type Repo = {
   size: number
   localPath: string
   tags: string[]
+  cloneUrl?: string
 }
 
 const now = '22/03/2021 7:33 AM'
@@ -101,6 +102,10 @@ const nativeMode = typeof window !== 'undefined' && Boolean(window.projectFilesN
 
 function nativePathName(filePath: string) {
   return filePath.split(/[\\/]/).filter(Boolean).pop() ?? filePath
+}
+
+function nativeRepoFromGithub(value: Record<string, unknown>): Repo {
+  return { id: String(value.id), name: String(value.name), owner: String((value.owner as Record<string, unknown> | undefined)?.login ?? ''), description: String(value.description ?? 'Sin descripción'), language: String(value.language ?? '—'), branch: String(value.default_branch ?? 'main'), visibility: value.private ? 'Privado' : 'Público', updated: String(value.updated_at ?? ''), size: Number(value.size ?? 0) * 1024, localPath: 'No descargado', tags: [String(value.language ?? 'GitHub')], cloneUrl: String(value.clone_url ?? '') }
 }
 
 function formatBytes(bytes: number) {
@@ -159,11 +164,14 @@ function App() {
   const [toast, setToast] = useState('')
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [repoDownloaded, setRepoDownloaded] = useState<Record<string, string>>({})
+  const [repoData, setRepoData] = useState<Repo[]>(nativeMode ? [] : repos)
+  const [githubLoading, setGithubLoading] = useState(false)
   const [nativeLoading, setNativeLoading] = useState(nativeMode)
+  const [metadataByPath, setMetadataByPath] = useState<Record<string, { description: string; tags: string[] }>>({})
 
   const currentFolder = items[currentFolderId]
   const selectedItems = selection.map((id) => items[id]).filter(Boolean)
-  const selectedRepo = repoSelection.length ? repos.find((repo) => repo.id === repoSelection[0]) : undefined
+  const selectedRepo = repoSelection.length ? repoData.find((repo) => repo.id === repoSelection[0]) : undefined
 
   const breadcrumb = useMemo(() => {
     const chain: FileItem[] = []
@@ -213,7 +221,7 @@ function App() {
       const folder: FileItem = { id: folderPath, path: folderPath, name: nativePathName(folderPath), kind: 'folder', type: 'Carpeta', size: entries.reduce((sum, entry) => sum + (entry.kind === 'file' ? entry.size : 0), 0), modified: '', created: '', description: folderPath, tags: [], parentId: parentPath, children: entries.map((entry) => entry.path) }
       setItems((previous) => {
         const next = { ...previous, [folderPath]: folder }
-        entries.forEach((entry) => { next[entry.path] = { id: entry.path, path: entry.path, name: entry.name, kind: entry.kind, type: entry.type, extension: entry.extension || '', size: entry.size, modified: entry.modified, created: entry.created, description: entry.path, tags: [], parentId: folderPath, children: entry.kind === 'folder' ? [] : undefined } })
+        entries.forEach((entry) => { const metadata = metadataByPath[entry.path]; next[entry.path] = { id: entry.path, path: entry.path, name: entry.name, kind: entry.kind, type: entry.type, extension: entry.extension || '', size: entry.size, modified: entry.modified, created: entry.created, description: metadata?.description ?? entry.path, tags: metadata?.tags ?? [], parentId: folderPath, children: entry.kind === 'folder' ? [] : undefined } })
         return next
       })
       setCurrentFolderId(folderPath)
@@ -225,6 +233,12 @@ function App() {
         setNavigationIndex(next.length - 1)
       }
     } catch (error) {
+      if (nativeMode) {
+        const emptyComputer: FileItem = { id: 'computer', name: 'Este equipo', kind: 'folder', type: 'Equipo', size: 0, modified: '', created: '', description: 'No se pudo leer esta ubicación', tags: [], parentId: null, children: [] }
+        setItems({ computer: emptyComputer })
+        setCurrentFolderId('computer')
+        setSelection([])
+      }
       notify(`No se pudo leer la carpeta: ${error instanceof Error ? error.message : 'permiso denegado'}`)
     } finally { setNativeLoading(false) }
   }
@@ -251,10 +265,25 @@ function App() {
 
   useEffect(() => {
     if (!nativeMode || !window.projectFilesNative) return
-    void refreshNativeDrives()
+    void window.projectFilesNative.loadState().then((saved) => {
+      const savedFolder = typeof saved?.currentFolderId === 'string' ? saved.currentFolderId : ''
+      if (saved?.metadata && typeof saved.metadata === 'object') setMetadataByPath(saved.metadata as Record<string, { description: string; tags: string[] }>)
+      if (Array.isArray(saved?.navigation)) setNavigation(saved.navigation.filter((value): value is string => typeof value === 'string'))
+      if (typeof saved?.navigationIndex === 'number') setNavigationIndex(saved.navigationIndex)
+      if (saved?.viewMode === 'list' || saved?.viewMode === 'grid') setViewMode(saved.viewMode)
+      if (saved?.sortKey === 'name' || saved?.sortKey === 'modified' || saved?.sortKey === 'size') setSortKey(saved.sortKey)
+      if (typeof saved?.sortDescending === 'boolean') setSortDescending(saved.sortDescending)
+      if (typeof saved?.query === 'string') setQuery(saved.query)
+      return refreshNativeDrives().then(() => savedFolder && savedFolder !== 'computer' ? refreshNativeFolder(savedFolder) : undefined)
+    }).catch(() => refreshNativeDrives())
     document.body.classList.add('native-app')
     return () => document.body.classList.remove('native-app')
   }, [])
+
+  useEffect(() => {
+    if (!nativeMode || !window.projectFilesNative) return
+    void window.projectFilesNative.saveState({ currentFolderId, navigation, navigationIndex, viewMode, sortKey, sortDescending, query, metadata: metadataByPath })
+  }, [currentFolderId, navigation, navigationIndex, viewMode, sortKey, sortDescending, query, metadataByPath])
 
   const goToFolder = (id: string, fromHistory = false) => {
     if (nativeMode) {
@@ -291,6 +320,7 @@ function App() {
   const createFolder = () => {
     const name = window.prompt('Nombre de la nueva carpeta', 'Nueva carpeta')?.trim()
     if (!name) return
+    if (nativeMode && currentFolderId === 'computer') return notify('Abre primero un disco, por ejemplo C:, para crear la carpeta')
     if (nativeMode && window.projectFilesNative) {
       void window.projectFilesNative.createFolder(currentFolderId, name).then(() => refreshNativeFolder()).then(() => notify(`Carpeta “${name}” creada`)).catch((error) => notify(`No se pudo crear la carpeta: ${error.message}`))
       return
@@ -404,6 +434,7 @@ function App() {
     const description = window.prompt('Descripción local', detailsItem.description)
     if (description === null) return
     setItems((previous) => ({ ...previous, [detailsItem.id]: { ...previous[detailsItem.id], description } }))
+    if (nativeMode && detailsItem.path) setMetadataByPath((previous) => ({ ...previous, [detailsItem.path!]: { description, tags: detailsItem.tags } }))
     notify('Descripción guardada localmente')
   }
 
@@ -429,7 +460,32 @@ function App() {
     setContextMenu({ x: Math.min(event.clientX, window.innerWidth - 230), y: Math.min(event.clientY, window.innerHeight - 310), id })
   }
 
+  const loadGithub = async () => {
+    if (!nativeMode || !window.projectFilesNative) return notify('GitHub real está disponible en el instalador de Windows')
+    const username = window.prompt('Usuario de GitHub', localStorage.getItem('project-files-github-user') ?? '')?.trim()
+    if (!username) return
+    const token = window.prompt('Token de GitHub (opcional para repositorios privados; no se guardará)', '')?.trim() ?? ''
+    localStorage.setItem('project-files-github-user', username)
+    setGithubLoading(true)
+    try {
+      const remoteRepos = await window.projectFilesNative.githubList(username, token)
+      const mapped = remoteRepos.map(nativeRepoFromGithub)
+      setRepoData(mapped)
+      setRepoSelection(mapped.length ? [mapped[0].id] : [])
+      notify(`${mapped.length} repositorio(s) cargado(s) desde GitHub`)
+    } catch (error) { notify(`No se pudieron cargar los repositorios: ${error instanceof Error ? error.message : 'error de GitHub'}`) }
+    finally { setGithubLoading(false) }
+  }
+
   const downloadRepo = (repo: Repo) => {
+    if (nativeMode && window.projectFilesNative && repo.cloneUrl) {
+      void window.projectFilesNative.chooseFolder().then((folder) => {
+        if (!folder) return
+        const destination = `${folder.replace(/[\\/]$/, '')}${folder.includes('\\') ? '\\' : '/'}${repo.name}`
+        return window.projectFilesNative!.githubClone(repo.cloneUrl!, destination).then(() => { setRepoDownloaded((previous) => ({ ...previous, [repo.id]: destination })); notify(`“${repo.name}” descargado en ${destination}`) })
+      }).catch((error) => notify(`No se pudo descargar “${repo.name}”: ${error.message}`))
+      return
+    }
     setRepoDownloaded((previous) => ({ ...previous, [repo.id]: `C:\\Users\\Usuario\\Projects\\${repo.name}` }))
     notify(`Descarga de “${repo.name}” completada en Proyectos`)
   }
@@ -469,6 +525,7 @@ function App() {
               {nativeMode ? <>
                 <button className={section === 'files' && currentFolderId === 'computer' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); void refreshNativeDrives() }}><Home size={16} />Este equipo</button>
                 <button className="nav-item" onClick={() => { if (window.projectFilesNative) void window.projectFilesNative.chooseFolder().then((folder) => { if (folder) return refreshNativeFolder(folder, true) }) }}><FolderOpen size={16} />Abrir carpeta</button>
+                <button className={section === 'github' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('github'); void loadGithub() }}><GitBranch size={16} />Proyectos de GitHub</button>
                 <button className="nav-item" onClick={() => document.querySelector<HTMLInputElement>('.search-wrap input')?.focus()}><Search size={16} />Buscar</button>
               </> : <>
                 <button className={section === 'files' && currentFolderId === 'root' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); goToFolder('root') }}><Home size={16} />Inicio</button>
@@ -503,8 +560,8 @@ function App() {
 
             {section === 'github' ? <div className="file-list github-list">
               <div className="list-head"><span className="name-head">Nombre</span><span>Lenguaje</span><span>Última actualización</span><span>Visibilidad</span><span>Tamaño</span></div>
-              {repos.map((repo) => <button className={repoSelection.includes(repo.id) ? 'file-row selected' : 'file-row'} key={repo.id} onClick={(event) => handleRowClick(event, repo.id)} onDoubleClick={() => downloadRepo(repo)}><span className="file-name"><span className="file-icon repo-icon">{getRepoIcon(repo)}</span><span><strong>{repo.name}</strong><small>{repo.owner}</small></span></span><span className="muted-cell">{repo.language}</span><span className="muted-cell">{repo.updated}</span><span className="muted-cell visibility-cell">{repo.visibility}</span><span className="muted-cell">{formatBytes(repo.size)}</span></button>)}
-              <div className="empty-list-hint"><GitBranch size={18} /> Doble clic para descargar una copia local del repositorio</div>
+              {repoData.map((repo) => <button className={repoSelection.includes(repo.id) ? 'file-row selected' : 'file-row'} key={repo.id} onClick={(event) => handleRowClick(event, repo.id)} onDoubleClick={() => downloadRepo(repo)}><span className="file-name"><span className="file-icon repo-icon">{getRepoIcon(repo)}</span><span><strong>{repo.name}</strong><small>{repo.owner}</small></span></span><span className="muted-cell">{repo.language}</span><span className="muted-cell">{repo.updated}</span><span className="muted-cell visibility-cell">{repo.visibility}</span><span className="muted-cell">{formatBytes(repo.size)}</span></button>)}
+              {!repoData.length && <div className="empty-list-hint"><GitBranch size={18} /> {githubLoading ? 'Cargando repositorios de GitHub…' : 'Pulsa “Proyectos de GitHub” para cargar tus repositorios reales'}</div>}
             </div> : <div className={viewMode === 'grid' ? 'file-list grid-view' : 'file-list'}>
               {viewMode === 'list' && <div className="list-head"><span className="name-head">Nombre</span><span>Tipo</span><span>Fecha de modificación</span><span>Tamaño</span><span>Descripción</span></div>}
               {visibleItems.map((item) => <button className={selection.includes(item.id) ? 'file-row selected' : 'file-row'} key={item.id} onClick={(event) => handleRowClick(event, item.id)} onDoubleClick={() => openSelected(item)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); openSelected(item) } }} onContextMenu={(event) => handleContextMenu(event, item.id)}>

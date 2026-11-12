@@ -30,6 +30,10 @@ type ProjectFilesNative = {
   rename: (filePath: string, name: string) => Promise<string>
   compress: (sourcePaths: string[], destinationZip: string) => Promise<void>
   extract: (archivePath: string, destinationPath: string) => Promise<void>
+  loadState: () => Promise<Record<string, unknown> | null>
+  saveState: (state: Record<string, unknown>) => Promise<void>
+  githubList: (username: string, token?: string) => Promise<Array<Record<string, unknown>>>
+  githubClone: (cloneUrl: string, destinationPath: string) => Promise<void>
 }
 
 declare global {

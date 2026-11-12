@@ -35,12 +35,16 @@ const safeChild = (root, child) => {
 
 async function listDirectory(folderPath) {
   const entries = await fs.readdir(folderPath, { withFileTypes: true })
-  return Promise.all(entries.map(async (entry) => {
-    const fullPath = path.join(folderPath, entry.name)
-    const stat = await fs.stat(fullPath)
-    const extension = path.extname(entry.name).toLowerCase()
-    return { name: entry.name, path: fullPath, kind: entry.isDirectory() ? 'folder' : 'file', size: stat.size, created: stat.birthtime.toISOString(), modified: stat.mtime.toISOString(), type: entry.isDirectory() ? 'Carpeta' : extension || 'Archivo', extension }
-  }))
+  const result = []
+  for (const entry of entries) {
+    try {
+      const fullPath = path.join(folderPath, entry.name)
+      const stat = await fs.stat(fullPath)
+      const extension = path.extname(entry.name).toLowerCase()
+      result.push({ name: entry.name, path: fullPath, kind: entry.isDirectory() ? 'folder' : 'file', size: stat.size, created: stat.birthtime.toISOString(), modified: stat.mtime.toISOString(), type: entry.isDirectory() ? 'Carpeta' : extension || 'Archivo', extension })
+    } catch { /* una entrada protegida no debe impedir leer las demás */ }
+  }
+  return result
 }
 
 function createWindow() {
@@ -88,6 +92,18 @@ ipcMain.handle('move', async (_event, sourcePaths, destinationPath) => Promise.a
 ipcMain.handle('trash', async (_event, filePath) => shell.trashItem(filePath))
 ipcMain.handle('rename', async (_event, filePath, name) => { const destination = safeChild(path.dirname(filePath), name); await fs.rename(filePath, destination); return destination })
 ipcMain.handle('read-metadata', async (_event, filePath) => { const stat = await fs.stat(filePath); return { size: stat.size, created: stat.birthtime.toISOString(), modified: stat.mtime.toISOString() } })
+ipcMain.handle('load-state', async () => { try { return JSON.parse(await fs.readFile(path.join(app.getPath('userData'), 'project-files-state.json'), 'utf8')) } catch { return null } })
+ipcMain.handle('save-state', async (_event, state) => { const statePath = path.join(app.getPath('userData'), 'project-files-state.json'); await fs.mkdir(path.dirname(statePath), { recursive: true }); await fs.writeFile(statePath, JSON.stringify(state, null, 2), 'utf8') })
+ipcMain.handle('github-list', async (_event, username, token = '') => {
+  const target = username ? `https://api.github.com/users/${encodeURIComponent(username)}/repos?per_page=100&sort=updated` : 'https://api.github.com/user/repos?per_page=100&sort=updated'
+  const response = await fetch(target, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Project-Files', ...(token ? { Authorization: `Bearer ${token}` } : {}) } })
+  if (!response.ok) throw new Error(`GitHub respondió ${response.status}`)
+  return response.json()
+})
+ipcMain.handle('github-clone', async (_event, cloneUrl, destinationPath) => {
+  if (!/^https:\/\/github\.com\//i.test(cloneUrl)) throw new Error('URL de GitHub no válida')
+  await run('git', ['clone', '--depth', '1', cloneUrl, destinationPath], { windowsHide: true })
+})
 ipcMain.handle('compress', async (_event, sourcePaths, destinationZip) => {
   if (!Array.isArray(sourcePaths) || !sourcePaths.length || path.extname(destinationZip).toLowerCase() !== '.zip') throw new Error('Solo se admite crear archivos ZIP')
   const script = "$destination=$args[-1]; $sources=$args[0..($args.Length-2)]; Compress-Archive -LiteralPath $sources -DestinationPath $destination -Force"
