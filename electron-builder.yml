@@ -8,6 +8,9 @@ files:
   - dist/**
   - electron/**
   - package.json
+extraResources:
+  - from: vendor/yt-dlp.exe
+    to: vendor/yt-dlp.exe
 asar: true
 win:
   icon: build/icon.ico
@@ -27,3 +30,8 @@ nsis:
   deleteAppDataOnUninstall: false
   runAfterFinish: true
   uninstallDisplayName: Project Files
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  installerLanguages:
+    - es

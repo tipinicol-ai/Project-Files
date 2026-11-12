@@ -13,11 +13,15 @@ async function listWindowsDrives() {
       const drive = `${String.fromCharCode(code)}:\\`
       try {
         await fs.access(drive)
-        drives.push({ name: `Disco local (${String.fromCharCode(code)}:)`, path: drive, kind: 'folder', size: 0, created: '', modified: '', type: 'Unidad', extension: '' })
+        const stats = await fs.statfs(drive)
+        const total = Number(stats.blocks) * Number(stats.bsize)
+        const free = Number(stats.bavail) * Number(stats.bsize)
+        drives.push({ name: `Disco local (${String.fromCharCode(code)}:)`, path: drive, kind: 'folder', size: total, free, created: '', modified: '', type: 'Unidad', extension: '' })
       } catch { /* unidad no disponible */ }
     }
   } else {
-    drives.push({ name: 'Sistema de archivos', path: '/', kind: 'folder', size: 0, created: '', modified: '', type: 'Unidad', extension: '' })
+    const stats = await fs.statfs('/')
+    drives.push({ name: 'Sistema de archivos', path: '/', kind: 'folder', size: Number(stats.blocks) * Number(stats.bsize), free: Number(stats.bavail) * Number(stats.bsize), created: '', modified: '', type: 'Unidad', extension: '' })
   }
   return drives
 }
@@ -103,6 +107,15 @@ ipcMain.handle('github-list', async (_event, username, token = '') => {
 ipcMain.handle('github-clone', async (_event, cloneUrl, destinationPath) => {
   if (!/^https:\/\/github\.com\//i.test(cloneUrl)) throw new Error('URL de GitHub no válida')
   await run('git', ['clone', '--depth', '1', cloneUrl, destinationPath], { windowsHide: true })
+})
+ipcMain.handle('youtube-download', async (_event, url, quality, mode, destinationPath) => {
+  if (!/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//i.test(url)) throw new Error('Introduce una URL válida de YouTube')
+  const bundled = path.join(process.resourcesPath, 'vendor', 'yt-dlp.exe')
+  const executable = existsSync(bundled) ? bundled : path.join(__dirname, '..', 'vendor', 'yt-dlp.exe')
+  if (!existsSync(executable)) throw new Error('No se encontró el motor yt-dlp incluido')
+  const format = mode === 'audio' ? 'bestaudio/best' : quality === 'best' ? 'bestvideo*+bestaudio/best' : `bestvideo[height<=${Number(quality)}]+bestaudio/best`
+  const args = ['--no-playlist', '-f', format, ...(mode === 'video' ? ['--merge-output-format', 'mp4'] : []), '-o', path.join(destinationPath, '%(title)s.%(ext)s'), url]
+  await run(executable, args, { windowsHide: true, maxBuffer: 1024 * 1024 * 4 })
 })
 ipcMain.handle('compress', async (_event, sourcePaths, destinationZip) => {
   if (!Array.isArray(sourcePaths) || !sourcePaths.length || path.extname(destinationZip).toLowerCase() !== '.zip') throw new Error('Solo se admite crear archivos ZIP')

@@ -24,4 +24,5 @@ contextBridge.exposeInMainWorld('projectFilesNative', {
   saveState: (state) => ipcRenderer.invoke('save-state', state),
   githubList: (username, token) => ipcRenderer.invoke('github-list', username, token),
   githubClone: (cloneUrl, destinationPath) => ipcRenderer.invoke('github-clone', cloneUrl, destinationPath),
+  youtubeDownload: (url, quality, mode, destinationPath) => ipcRenderer.invoke('youtube-download', url, quality, mode, destinationPath),
 })

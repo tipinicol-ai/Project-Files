@@ -5,6 +5,7 @@ type NativeDirectoryEntry = {
   path: string
   kind: 'file' | 'folder'
   size: number
+  free?: number
   modified: string
   created: string
   type: string
@@ -34,6 +35,7 @@ type ProjectFilesNative = {
   saveState: (state: Record<string, unknown>) => Promise<void>
   githubList: (username: string, token?: string) => Promise<Array<Record<string, unknown>>>
   githubClone: (cloneUrl: string, destinationPath: string) => Promise<void>
+  youtubeDownload: (url: string, quality: string, mode: 'video' | 'audio', destinationPath: string) => Promise<void>
 }
 
 declare global {

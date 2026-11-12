@@ -109,6 +109,10 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .file-row:hover { background: rgba(98, 140, 182, .1); }
 .file-row.selected { background: linear-gradient(90deg, rgba(70, 122, 161, .38), rgba(65, 98, 132, .24)); box-shadow: inset 0 1px 0 rgba(129, 216, 238, .1), inset 0 -1px 0 rgba(129, 216, 238, .06); }
 .file-row.selected::before { content: ''; position: absolute; left: 0; top: 7px; bottom: 7px; width: 2px; background: var(--cyan); border-radius: 0 3px 3px 0; }
+.drive-card { grid-template-columns: minmax(210px, 1.15fr) minmax(100px, .7fr) minmax(120px, .8fr) minmax(150px, 1fr) minmax(120px, .8fr); }
+.drive-card .file-name { padding-top: 3px; }
+.drive-usage { position: absolute; left: 12px; right: 12px; bottom: 5px; height: 4px; overflow: hidden; border-radius: 8px; background: #26384f; }
+.drive-usage span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #45bfdc, #76e0ee); }
 .file-name { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .file-icon { width: 21px; display: grid; place-items: center; flex-shrink: 0; }
 .file-name > span:last-child { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -121,6 +125,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .grid-view .file-row { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; min-height: 112px; gap: 12px; padding: 15px; border: 1px solid rgba(143, 172, 207, .1); border-radius: 5px; }
 .grid-view .file-row.selected { border-color: rgba(111, 213, 237, .5); }
 .grid-view .file-row.selected::before { top: 0; bottom: auto; width: 100%; height: 2px; border-radius: 4px 4px 0 0; }
+.grid-view .drive-card { min-height: 138px; }
+.grid-view .drive-usage { position: relative; left: auto; right: auto; bottom: auto; width: 100%; margin-top: auto; }
 .grid-view .file-icon { width: auto; }
 .grid-view .file-name { align-items: center; }
 .list-footer { display: flex; justify-content: space-between; padding: 10px 12px 4px; color: #68809c; font-size: 10px; }
@@ -205,6 +211,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .copy-dialog-items { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 13px; }
 .copy-dialog-items span { max-width: 180px; overflow: hidden; padding: 4px 7px; border: 1px solid rgba(135, 174, 207, .16); border-radius: 4px; color: #a9bfd4; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .copy-close { width: 100%; margin-top: 18px; }
+.media-dialog { width: min(520px, calc(100vw - 38px)); }
+.media-label { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; color: #9bb1c9; font-size: 10px; }
+.media-input { width: 100%; min-height: 34px; padding: 0 10px; border: 1px solid rgba(135, 174, 207, .2); border-radius: 5px; outline: 0; background: rgba(5, 13, 24, .48); color: #e6edf8; font-size: 11px; }
+.media-input:focus { border-color: rgba(101, 211, 237, .7); box-shadow: 0 0 0 2px rgba(75, 196, 226, .09); }
+.media-options, .media-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.media-actions { margin-top: 18px; }
+.media-actions .primary-action, .media-actions .secondary-action { width: 100%; }
+.media-note { margin: 14px 0 0; color: #7289a2; font-size: 9px; line-height: 1.5; }
 
 @media (max-width: 1050px) {
   .desktop-stage { padding: 0; }

@@ -62,6 +62,7 @@ type FileItem = {
   children?: string[]
   extension?: string
   path?: string
+  free?: number
 }
 
 type Repo = {
@@ -117,6 +118,7 @@ function formatBytes(bytes: number) {
 }
 
 function getIcon(item: FileItem, size = 19) {
+  if (item.type === 'Unidad') return <HardDrive size={size} color="#63d7ed" strokeWidth={1.8} />
   if (item.kind === 'folder') return <Folder size={size} fill="#f1b83c" color="#f7c95e" strokeWidth={1.7} />
   if (item.extension === '.xlsx') return <FileSpreadsheet size={size} color="#48bd91" />
   if (item.extension === '.png' || item.extension === '.jpg') return <FileImage size={size} color="#b77cff" />
@@ -163,6 +165,11 @@ function App() {
   const [clipboard, setClipboard] = useState<{ ids: string[]; mode: 'copy' | 'move' } | null>(null)
   const [toast, setToast] = useState('')
   const [copyDialog, setCopyDialog] = useState<{ mode: 'copy' | 'move'; names: string[]; status: 'working' | 'done' | 'error'; message: string } | null>(null)
+  const [youtubePanel, setYoutubePanel] = useState(false)
+  const [youtubeUrl, setYoutubeUrl] = useState('')
+  const [youtubeQuality, setYoutubeQuality] = useState('1080')
+  const [youtubeMode, setYoutubeMode] = useState<'video' | 'audio'>('video')
+  const [youtubeBusy, setYoutubeBusy] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [repoDownloaded, setRepoDownloaded] = useState<Record<string, string>>({})
   const [repoData, setRepoData] = useState<Repo[]>(nativeMode ? [] : repos)
@@ -252,7 +259,7 @@ function App() {
       const computer: FileItem = { id: 'computer', name: 'Este equipo', kind: 'folder', type: 'Equipo', size: 0, modified: '', created: '', description: 'Discos y unidades conectados a este PC', tags: [], parentId: null, children: drives.map((drive) => drive.path) }
       setItems((previous) => {
         const next: Record<string, FileItem> = { ...previous, computer }
-        drives.forEach((drive) => { next[drive.path] = { id: drive.path, path: drive.path, name: drive.name, kind: 'folder', type: 'Unidad', size: 0, modified: '', created: '', description: drive.path, tags: [], parentId: 'computer', children: [] } })
+        drives.forEach((drive) => { next[drive.path] = { id: drive.path, path: drive.path, name: drive.name, kind: 'folder', type: 'Unidad', size: drive.size, free: drive.free, modified: '', created: '', description: drive.path, tags: [], parentId: 'computer', children: [] } })
         return next
       })
       setCurrentFolderId('computer')
@@ -288,6 +295,10 @@ function App() {
 
   const goToFolder = (id: string, fromHistory = false) => {
     if (nativeMode) {
+      if (id === 'computer') {
+        void refreshNativeDrives()
+        return
+      }
       void refreshNativeFolder(id, !fromHistory)
       return
     }
@@ -318,10 +329,15 @@ function App() {
     setSelection(event.ctrlKey || event.metaKey ? (selection.includes(id) ? selection.filter((value) => value !== id) : [...selection, id]) : [id])
   }
 
-  const createFolder = () => {
+  const createFolder = async () => {
     const name = window.prompt('Nombre de la nueva carpeta', 'Nueva carpeta')?.trim()
     if (!name) return
-    if (nativeMode && currentFolderId === 'computer') return notify('Abre primero un disco, por ejemplo C:, para crear la carpeta')
+    if (nativeMode && currentFolderId === 'computer') {
+      const destination = await window.projectFilesNative?.chooseFolder()
+      if (!destination) return
+      void window.projectFilesNative!.createFolder(destination, name).then(() => { setCurrentFolderId(destination); return refreshNativeFolder(destination, true) }).then(() => notify(`Carpeta “${name}” creada`)).catch((error) => notify(`No se pudo crear la carpeta: ${error.message}`))
+      return
+    }
     if (nativeMode && window.projectFilesNative) {
       void window.projectFilesNative.createFolder(currentFolderId, name).then(() => refreshNativeFolder()).then(() => notify(`Carpeta “${name}” creada`)).catch((error) => notify(`No se pudo crear la carpeta: ${error.message}`))
       return
@@ -442,6 +458,18 @@ function App() {
     notify('Descripción guardada localmente')
   }
 
+  const editDetails = () => {
+    if (!detailsItem) return
+    const description = window.prompt('Descripción local', detailsItem.description ?? '')
+    if (description === null) return
+    const tagsText = window.prompt('Etiquetas separadas por coma', detailsItem.tags.join(', '))
+    if (tagsText === null) return
+    const tags = tagsText.split(',').map((tag) => tag.trim()).filter(Boolean)
+    setItems((previous) => ({ ...previous, [detailsItem.id]: { ...previous[detailsItem.id], description, tags } }))
+    if (nativeMode && detailsItem.path) setMetadataByPath((previous) => ({ ...previous, [detailsItem.path!]: { description, tags } }))
+    notify('Detalles y etiquetas guardados')
+  }
+
   const openSelected = (item: FileItem) => {
     if (item.kind === 'folder') goToFolder(item.id)
     else if (nativeMode && window.projectFilesNative && item.path) void window.projectFilesNative.openDefault(item.path).then((error) => error && notify(error)).catch((error) => notify(`No se pudo abrir el archivo: ${error.message}`))
@@ -494,6 +522,20 @@ function App() {
     notify(`Descarga de “${repo.name}” completada en Proyectos`)
   }
 
+  const downloadYoutube = async () => {
+    if (!nativeMode || !window.projectFilesNative) return notify('El descargador funciona en el instalador de Windows')
+    if (!youtubeUrl.trim()) return notify('Introduce la URL de YouTube')
+    const folder = await window.projectFilesNative.chooseFolder()
+    if (!folder) return
+    setYoutubeBusy(true)
+    try {
+      await window.projectFilesNative.youtubeDownload(youtubeUrl.trim(), youtubeQuality, youtubeMode, folder)
+      notify('Descarga terminada en la carpeta seleccionada')
+      setYoutubeUrl('')
+    } catch (error) { notify(`No se pudo descargar: ${error instanceof Error ? error.message : 'asegúrate de tener yt-dlp instalado'}`) }
+    finally { setYoutubeBusy(false) }
+  }
+
   const selectedRepoData = selectedRepo ? { ...selectedRepo, localPath: repoDownloaded[selectedRepo.id] ?? selectedRepo.localPath } : undefined
 
   return (
@@ -530,6 +572,7 @@ function App() {
                 <button className={section === 'files' && currentFolderId === 'computer' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); void refreshNativeDrives() }}><Home size={16} />Este equipo</button>
                 <button className="nav-item" onClick={() => { if (window.projectFilesNative) void window.projectFilesNative.chooseFolder().then((folder) => { if (folder) return refreshNativeFolder(folder, true) }) }}><FolderOpen size={16} />Abrir carpeta</button>
                 <button className={section === 'github' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('github'); void loadGithub() }}><GitBranch size={16} />Proyectos de GitHub</button>
+                <button className={youtubePanel ? 'nav-item active' : 'nav-item'} onClick={() => setYoutubePanel(true)}><Download size={16} />Descargador multimedia</button>
                 <button className="nav-item" onClick={() => document.querySelector<HTMLInputElement>('.search-wrap input')?.focus()}><Search size={16} />Buscar</button>
               </> : <>
                 <button className={section === 'files' && currentFolderId === 'root' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); goToFolder('root') }}><Home size={16} />Inicio</button>
@@ -568,9 +611,10 @@ function App() {
               {!repoData.length && <div className="empty-list-hint"><GitBranch size={18} /> {githubLoading ? 'Cargando repositorios de GitHub…' : 'Pulsa “Proyectos de GitHub” para cargar tus repositorios reales'}</div>}
             </div> : <div className={viewMode === 'grid' ? 'file-list grid-view' : 'file-list'}>
               {viewMode === 'list' && <div className="list-head"><span className="name-head">Nombre</span><span>Tipo</span><span>Fecha de modificación</span><span>Tamaño</span><span>Descripción</span></div>}
-              {visibleItems.map((item) => <button className={selection.includes(item.id) ? 'file-row selected' : 'file-row'} key={item.id} onClick={(event) => handleRowClick(event, item.id)} onDoubleClick={() => openSelected(item)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); openSelected(item) } }} onContextMenu={(event) => handleContextMenu(event, item.id)}>
+              {visibleItems.map((item) => <button className={`${selection.includes(item.id) ? 'file-row selected' : 'file-row'} ${currentFolderId === 'computer' && item.type === 'Unidad' ? 'drive-card' : ''}`} key={item.id} onClick={(event) => handleRowClick(event, item.id)} onDoubleClick={() => openSelected(item)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); openSelected(item) } }} onContextMenu={(event) => handleContextMenu(event, item.id)}>
                 <span className="file-name"><span className="file-icon">{getIcon(item)}</span><span><strong>{item.name}</strong>{viewMode === 'grid' && <small>{item.type}</small>}</span></span>
-                {viewMode === 'list' && <><span className="muted-cell">{item.type}</span><span className="muted-cell">{item.modified}</span><span className="muted-cell">{item.kind === 'folder' ? '—' : formatBytes(item.size)}</span><span className="description-cell">{item.description}</span></>}
+                {viewMode === 'list' && <><span className="muted-cell">{item.type}</span><span className="muted-cell">{item.modified || (item.type === 'Unidad' ? 'Disponible' : '—')}</span><span className="muted-cell">{item.kind === 'folder' ? (item.type === 'Unidad' ? formatBytes(item.size) : '—') : formatBytes(item.size)}</span><span className="description-cell">{item.type === 'Unidad' && item.free !== undefined ? `${formatBytes(item.size - item.free)} usados de ${formatBytes(item.size)}` : item.description}</span></>}
+                {currentFolderId === 'computer' && item.type === 'Unidad' && item.free !== undefined && <span className="drive-usage"><span style={{ width: `${Math.max(2, Math.min(100, ((item.size - item.free) / Math.max(1, item.size)) * 100))}%` }} /></span>}
               </button>)}
               {!visibleItems.length && <div className="empty-list-hint"><Search size={18} /> No se encontraron elementos en esta ubicación</div>}
               {visibleItems.length > 0 && <div className="list-footer"><span>{visibleItems.length} elementos</span><span>{clipboard ? `${clipboard.mode === 'copy' ? 'Copiado' : 'Cortado'}: ${clipboard.ids.length}` : 'Listo'}</span></div>}
@@ -590,13 +634,13 @@ function App() {
               <div className="details-hero"><div className="big-file-icon">{getIcon(detailsItem, 34)}</div><h2>{detailsItem.name}</h2><p className="path-line">{breadcrumb.map((crumb) => crumb.name).join(' / ')}</p></div>
               {detailsItem.kind === 'folder' && <div className="usage-ring" style={{ background: `conic-gradient(#55c7e8 0deg 235deg, #26354d 235deg 360deg)` }}><div><strong>{detailsItem.children?.length ?? 0}</strong><span>elementos</span></div></div>}
               <div className="detail-divider" /><div className="detail-lines"><div><span>Tipo</span><strong>{detailsItem.type}</strong></div><div><span>Elementos</span><strong>{detailsItem.kind === 'folder' ? detailsItem.children?.length ?? 0 : '—'}</strong></div><div><span>Tamaño</span><strong>{detailsItem.kind === 'folder' ? formatBytes(getFolderSize(detailsItem.id, items)) : formatBytes(detailsItem.size)}</strong></div><div><span>Creado</span><strong>{detailsItem.created}</strong></div><div><span>Modificado</span><strong>{detailsItem.modified}</strong></div><div><span>Ubicación</span><strong className="truncate">Mi equipo / {breadcrumb.slice(1).map((crumb) => crumb.name).join(' / ') || detailsItem.name}</strong></div></div>
-              <div className="detail-section"><label>Etiquetas <button className="inline-edit"><Plus size={13} /></button></label><div className="tag-list">{detailsItem.tags.length ? detailsItem.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>) : <span className="empty-meta">Sin etiquetas</span>}</div></div><div className="detail-section"><label>Descripción <button className="inline-edit" onClick={editDescription}><Pencil size={12} /></button></label><p className="detail-description">{detailsItem.description || 'Añade una descripción local para este elemento.'}</p></div>
-              <div className="detail-actions"><button className="secondary-action" onClick={() => editDescription()}><Pencil size={15} />Editar detalles</button><button className="secondary-action danger-action" onClick={() => deleteSelected([detailsItem.id])}><Trash2 size={15} />Papelera</button></div>
+              <div className="detail-section"><label>Etiquetas <button className="inline-edit" onClick={editDetails} title="Editar etiquetas"><Plus size={13} /></button></label><div className="tag-list">{detailsItem.tags.length ? detailsItem.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>) : <span className="empty-meta">Sin etiquetas</span>}</div></div><div className="detail-section"><label>Descripción <button className="inline-edit" onClick={editDetails} title="Editar descripción"><Pencil size={12} /></button></label><p className="detail-description">{detailsItem.description || 'Añade una descripción local para este elemento.'}</p></div>
+              <div className="detail-actions"><button className="secondary-action" onClick={editDetails}><Pencil size={15} />Editar detalles y etiquetas</button><button className="secondary-action danger-action" onClick={() => deleteSelected([detailsItem.id])}><Trash2 size={15} />Papelera</button></div>
             </div> : <div className="no-selection"><div className="no-selection-icon"><FolderOpen size={26} /></div><h3>Sin selección</h3><p>Selecciona un archivo o carpeta para ver sus detalles.</p></div>}
           </aside>
         </div>
 
-        <footer className="app-footer"><span><Zap size={13} /> Project Files</span><span>Administrador local de archivos</span><span>{nativeMode ? 'v0.2.0 Windows' : 'v0.2.0 Preview'}</span></footer>
+        <footer className="app-footer"><span><Zap size={13} /> Project Files</span><span>Desarrollado por Bryan Castellano</span><span>{nativeMode ? 'v0.2.0 Windows' : 'v0.2.0 Preview'}</span></footer>
       </section>
 
       {contextMenu && <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }}>
@@ -613,6 +657,8 @@ function App() {
       </div>}
 
       {copyDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Progreso de copia"><div className="copy-dialog"><div className={`copy-dialog-icon ${copyDialog.status}`}><Copy size={25} /></div><div className="copy-dialog-title">{copyDialog.mode === 'move' ? 'Moviendo elementos' : 'Copiando elementos'}</div><div className="copy-dialog-subtitle">{copyDialog.message}</div>{copyDialog.status === 'working' && <div className="copy-progress"><span /></div>}<div className="copy-dialog-destination"><span>Destino</span><strong>{currentFolder?.path ?? currentFolder?.name ?? 'Ubicación actual'}</strong></div><div className="copy-dialog-items">{copyDialog.names.slice(0, 4).map((name) => <span key={name}>{name}</span>)}{copyDialog.names.length > 4 && <span>+ {copyDialog.names.length - 4} más</span>}</div>{copyDialog.status !== 'working' && <button className="primary-action copy-close" onClick={() => setCopyDialog(null)}>{copyDialog.status === 'done' ? 'Listo' : 'Cerrar'}</button>}</div></div>}
+
+      {youtubePanel && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Descargador de YouTube"><div className="copy-dialog media-dialog"><div className="copy-dialog-icon"><Download size={25} /></div><div className="copy-dialog-title">Descargador multimedia</div><div className="copy-dialog-subtitle">Descarga únicamente vídeos o audios que tengas autorización para guardar.</div><label className="media-label">URL de YouTube<input className="media-input" value={youtubeUrl} onChange={(event) => setYoutubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=…" /></label><div className="media-options"><label className="media-label">Tipo<select className="media-input" value={youtubeMode} onChange={(event) => setYoutubeMode(event.target.value as 'video' | 'audio')}><option value="video">Vídeo</option><option value="audio">Solo audio</option></select></label><label className="media-label">Calidad<select className="media-input" value={youtubeQuality} onChange={(event) => setYoutubeQuality(event.target.value)} disabled={youtubeMode === 'audio'}><option value="best">Mejor disponible</option><option value="2160">2160p</option><option value="1440">1440p</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option></select></label></div><div className="media-actions"><button className="secondary-action" onClick={() => setYoutubePanel(false)}>Cancelar</button><button className="primary-action" onClick={downloadYoutube} disabled={youtubeBusy}>{youtubeBusy ? 'Descargando…' : 'Elegir carpeta y descargar'}</button></div><p className="media-note">Requiere <strong>yt-dlp</strong> instalado y disponible en PATH de Windows.</p></div></div>}
 
       {toast && <div className="toast"><Check size={16} />{toast}</div>}
     </main>
