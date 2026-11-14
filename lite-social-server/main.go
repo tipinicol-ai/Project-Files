@@ -11,9 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -60,16 +58,15 @@ func main() {
 		port = p
 	}
 	url := "http://127.0.0.1:" + port
-	go func() {
-		time.Sleep(350 * time.Millisecond)
-		if runtime.GOOS == "windows" {
-			_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-		} else {
-			_ = exec.Command("xdg-open", url).Start()
-		}
-		log.Printf("Project Files Social Server Lite: %s", url)
-	}()
-	log.Printf("Servidor social activo en %s", url)
+	log.Printf("==============================================")
+	log.Printf(" PROJECT FILES SOCIAL SERVER LITE")
+	log.Printf("==============================================")
+	log.Printf("Estado: servidor social activo")
+	log.Printf("Direccion web: %s", url)
+	log.Printf("Panel admin: %s/admin", url)
+	log.Printf("Datos guardados en: %s", dataDir)
+	log.Printf("Abre la direccion manualmente; el navegador no se abrira solo.")
+	log.Printf("Pulsa Ctrl+C para detener el servidor.")
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 func hash(s string) string { b := sha256.Sum256([]byte(s)); return hex.EncodeToString(b[:]) }
