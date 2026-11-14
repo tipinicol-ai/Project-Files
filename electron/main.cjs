@@ -61,10 +61,13 @@ async function socialPage(entries, relativePath, token, user, social, profile = 
 
 async function startShareServer(root, mode = 'files') {
   if (shareServer) await stopShareServer()
-  await fs.access(root)
+  const selectedRoot = root || (mode === 'social' ? path.join(shareDataDir(), 'social-posts') : '')
+  if (!selectedRoot) throw new Error('Debes seleccionar una carpeta para compartir archivos')
+  await fs.mkdir(selectedRoot, { recursive: true })
+  await fs.access(selectedRoot)
   const token = randomBytes(10).toString('hex')
   await fs.mkdir(shareDataDir(), { recursive: true })
-  shareState = { root: path.resolve(root), token, mode: mode === 'social' ? 'social' : 'files', dataDir: shareDataDir() }
+  shareState = { root: path.resolve(selectedRoot), token, mode: mode === 'social' ? 'social' : 'files', dataDir: shareDataDir() }
   shareServer = http.createServer(async (request, response) => {
     try {
       const requestUrl = new URL(request.url ?? '/', 'http://localhost')

@@ -39,7 +39,7 @@ type ProjectFilesNative = {
   githubList: (username: string, token?: string) => Promise<Array<Record<string, unknown>>>
   githubClone: (cloneUrl: string, destinationPath: string) => Promise<void>
   youtubeDownload: (url: string, quality: string, mode: 'video' | 'audio', destinationPath: string) => Promise<void>
-  shareStart: (folderPath: string, mode?: 'files' | 'social') => Promise<{ root: string; mode: 'files' | 'social'; port: number; url: string; localUrl: string }>
+  shareStart: (folderPath?: string, mode?: 'files' | 'social') => Promise<{ root: string; mode: 'files' | 'social'; port: number; url: string; localUrl: string }>
   shareStop: () => Promise<void>
   shareStatus: () => Promise<{ root: string; mode: 'files' | 'social'; port: number; url: string; localUrl: string } | null>
 }
