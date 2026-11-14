@@ -219,6 +219,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .media-actions { margin-top: 18px; }
 .media-actions .primary-action, .media-actions .secondary-action { width: 100%; }
 .media-note { margin: 14px 0 0; color: #7289a2; font-size: 9px; line-height: 1.5; }
+.form-dialog { width: min(470px, calc(100vw - 38px)); }
+.media-textarea { min-height: 92px; padding-top: 9px; resize: vertical; font-family: inherit; }
+.media-input:disabled { cursor: not-allowed; opacity: .5; }
+.field-hint { color: #7189a2; font-size: 9px; font-weight: 400; }
+.github-help { margin-top: 13px; padding: 9px; border-left: 2px solid #54c8e4; background: rgba(50, 132, 162, .1); color: #839bb4; font-size: 9px; line-height: 1.5; }
 
 @media (max-width: 1050px) {
   .desktop-stage { padding: 0; }

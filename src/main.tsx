@@ -176,6 +176,12 @@ function App() {
   const [githubLoading, setGithubLoading] = useState(false)
   const [nativeLoading, setNativeLoading] = useState(nativeMode)
   const [metadataByPath, setMetadataByPath] = useState<Record<string, { description: string; tags: string[] }>>({})
+  const [folderDialog, setFolderDialog] = useState(false)
+  const [folderName, setFolderName] = useState('')
+  const [detailsDraft, setDetailsDraft] = useState<{ description: string; tags: string } | null>(null)
+  const [githubDialog, setGithubDialog] = useState(false)
+  const [githubUser, setGithubUser] = useState(() => localStorage.getItem('project-files-github-user') ?? '')
+  const [githubToken, setGithubToken] = useState('')
 
   const currentFolder = items[currentFolderId]
   const selectedItems = selection.map((id) => items[id]).filter(Boolean)
@@ -329,9 +335,15 @@ function App() {
     setSelection(event.ctrlKey || event.metaKey ? (selection.includes(id) ? selection.filter((value) => value !== id) : [...selection, id]) : [id])
   }
 
-  const createFolder = async () => {
-    const name = window.prompt('Nombre de la nueva carpeta', 'Nueva carpeta')?.trim()
-    if (!name) return
+  const createFolder = () => {
+    setFolderName('')
+    setFolderDialog(true)
+  }
+
+  const submitCreateFolder = async () => {
+    const name = folderName.trim()
+    if (!name) return notify('Escribe un nombre para la carpeta')
+    setFolderDialog(false)
     if (nativeMode && currentFolderId === 'computer') {
       const destination = await window.projectFilesNative?.chooseFolder()
       if (!destination) return
@@ -451,22 +463,21 @@ function App() {
 
   const editDescription = () => {
     if (!detailsItem) return
-    const description = window.prompt('Descripción local', detailsItem.description)
-    if (description === null) return
-    setItems((previous) => ({ ...previous, [detailsItem.id]: { ...previous[detailsItem.id], description } }))
-    if (nativeMode && detailsItem.path) setMetadataByPath((previous) => ({ ...previous, [detailsItem.path!]: { description, tags: detailsItem.tags } }))
-    notify('Descripción guardada localmente')
+    setDetailsDraft({ description: detailsItem.description ?? '', tags: detailsItem.tags.join(', ') })
   }
 
   const editDetails = () => {
     if (!detailsItem) return
-    const description = window.prompt('Descripción local', detailsItem.description ?? '')
-    if (description === null) return
-    const tagsText = window.prompt('Etiquetas separadas por coma', detailsItem.tags.join(', '))
-    if (tagsText === null) return
-    const tags = tagsText.split(',').map((tag) => tag.trim()).filter(Boolean)
+    setDetailsDraft({ description: detailsItem.description ?? '', tags: detailsItem.tags.join(', ') })
+  }
+
+  const saveDetails = () => {
+    if (!detailsItem || !detailsDraft) return
+    const { description } = detailsDraft
+    const tags = detailsDraft.tags.split(',').map((tag) => tag.trim()).filter(Boolean)
     setItems((previous) => ({ ...previous, [detailsItem.id]: { ...previous[detailsItem.id], description, tags } }))
     if (nativeMode && detailsItem.path) setMetadataByPath((previous) => ({ ...previous, [detailsItem.path!]: { description, tags } }))
+    setDetailsDraft(null)
     notify('Detalles y etiquetas guardados')
   }
 
@@ -494,17 +505,17 @@ function App() {
 
   const loadGithub = async () => {
     if (!nativeMode || !window.projectFilesNative) return notify('GitHub real está disponible en el instalador de Windows')
-    const username = window.prompt('Usuario de GitHub', localStorage.getItem('project-files-github-user') ?? '')?.trim()
-    if (!username) return
-    const token = window.prompt('Token de GitHub (opcional para repositorios privados; no se guardará)', '')?.trim() ?? ''
+    const username = githubUser.trim()
+    if (!username) return notify('Escribe tu usuario de GitHub')
     localStorage.setItem('project-files-github-user', username)
     setGithubLoading(true)
     try {
-      const remoteRepos = await window.projectFilesNative.githubList(username, token)
+      const remoteRepos = await window.projectFilesNative.githubList(username, githubToken.trim())
       const mapped = remoteRepos.map(nativeRepoFromGithub)
       setRepoData(mapped)
       setRepoSelection(mapped.length ? [mapped[0].id] : [])
       notify(`${mapped.length} repositorio(s) cargado(s) desde GitHub`)
+      setGithubDialog(false)
     } catch (error) { notify(`No se pudieron cargar los repositorios: ${error instanceof Error ? error.message : 'error de GitHub'}`) }
     finally { setGithubLoading(false) }
   }
@@ -571,7 +582,7 @@ function App() {
               {nativeMode ? <>
                 <button className={section === 'files' && currentFolderId === 'computer' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); void refreshNativeDrives() }}><Home size={16} />Este equipo</button>
                 <button className="nav-item" onClick={() => { if (window.projectFilesNative) void window.projectFilesNative.chooseFolder().then((folder) => { if (folder) return refreshNativeFolder(folder, true) }) }}><FolderOpen size={16} />Abrir carpeta</button>
-                <button className={section === 'github' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('github'); void loadGithub() }}><GitBranch size={16} />Proyectos de GitHub</button>
+                <button className={section === 'github' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('github'); setGithubDialog(true) }}><GitBranch size={16} />Proyectos de GitHub</button>
                 <button className={youtubePanel ? 'nav-item active' : 'nav-item'} onClick={() => setYoutubePanel(true)}><Download size={16} />Descargador multimedia</button>
                 <button className="nav-item" onClick={() => document.querySelector<HTMLInputElement>('.search-wrap input')?.focus()}><Search size={16} />Buscar</button>
               </> : <>
@@ -634,7 +645,7 @@ function App() {
               <div className="details-hero"><div className="big-file-icon">{getIcon(detailsItem, 34)}</div><h2>{detailsItem.name}</h2><p className="path-line">{breadcrumb.map((crumb) => crumb.name).join(' / ')}</p></div>
               {detailsItem.kind === 'folder' && <div className="usage-ring" style={{ background: `conic-gradient(#55c7e8 0deg 235deg, #26354d 235deg 360deg)` }}><div><strong>{detailsItem.children?.length ?? 0}</strong><span>elementos</span></div></div>}
               <div className="detail-divider" /><div className="detail-lines"><div><span>Tipo</span><strong>{detailsItem.type}</strong></div><div><span>Elementos</span><strong>{detailsItem.kind === 'folder' ? detailsItem.children?.length ?? 0 : '—'}</strong></div><div><span>Tamaño</span><strong>{detailsItem.kind === 'folder' ? formatBytes(getFolderSize(detailsItem.id, items)) : formatBytes(detailsItem.size)}</strong></div><div><span>Creado</span><strong>{detailsItem.created}</strong></div><div><span>Modificado</span><strong>{detailsItem.modified}</strong></div><div><span>Ubicación</span><strong className="truncate">Mi equipo / {breadcrumb.slice(1).map((crumb) => crumb.name).join(' / ') || detailsItem.name}</strong></div></div>
-              <div className="detail-section"><label>Etiquetas <button className="inline-edit" onClick={editDetails} title="Editar etiquetas"><Plus size={13} /></button></label><div className="tag-list">{detailsItem.tags.length ? detailsItem.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>) : <span className="empty-meta">Sin etiquetas</span>}</div></div><div className="detail-section"><label>Descripción <button className="inline-edit" onClick={editDetails} title="Editar descripción"><Pencil size={12} /></button></label><p className="detail-description">{detailsItem.description || 'Añade una descripción local para este elemento.'}</p></div>
+              <div className="detail-section"><label>Categorías <button className="inline-edit" onClick={editDetails} title="Editar categorías"><Plus size={13} /></button></label><div className="tag-list">{detailsItem.tags.length ? detailsItem.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>) : <span className="empty-meta">Sin categorías</span>}</div></div><div className="detail-section"><label>Descripción <button className="inline-edit" onClick={editDetails} title="Editar descripción"><Pencil size={12} /></button></label><p className="detail-description">{detailsItem.description || 'Añade una descripción local para este elemento.'}</p></div>
               <div className="detail-actions"><button className="secondary-action" onClick={editDetails}><Pencil size={15} />Editar detalles y etiquetas</button><button className="secondary-action danger-action" onClick={() => deleteSelected([detailsItem.id])}><Trash2 size={15} />Papelera</button></div>
             </div> : <div className="no-selection"><div className="no-selection-icon"><FolderOpen size={26} /></div><h3>Sin selección</h3><p>Selecciona un archivo o carpeta para ver sus detalles.</p></div>}
           </aside>
@@ -657,6 +668,12 @@ function App() {
       </div>}
 
       {copyDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Progreso de copia"><div className="copy-dialog"><div className={`copy-dialog-icon ${copyDialog.status}`}><Copy size={25} /></div><div className="copy-dialog-title">{copyDialog.mode === 'move' ? 'Moviendo elementos' : 'Copiando elementos'}</div><div className="copy-dialog-subtitle">{copyDialog.message}</div>{copyDialog.status === 'working' && <div className="copy-progress"><span /></div>}<div className="copy-dialog-destination"><span>Destino</span><strong>{currentFolder?.path ?? currentFolder?.name ?? 'Ubicación actual'}</strong></div><div className="copy-dialog-items">{copyDialog.names.slice(0, 4).map((name) => <span key={name}>{name}</span>)}{copyDialog.names.length > 4 && <span>+ {copyDialog.names.length - 4} más</span>}</div>{copyDialog.status !== 'working' && <button className="primary-action copy-close" onClick={() => setCopyDialog(null)}>{copyDialog.status === 'done' ? 'Listo' : 'Cerrar'}</button>}</div></div>}
+
+      {folderDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Crear carpeta"><form className="copy-dialog form-dialog" onSubmit={(event) => { event.preventDefault(); void submitCreateFolder() }}><div className="copy-dialog-icon"><FolderPlus size={25} /></div><div className="copy-dialog-title">Nueva carpeta</div><div className="copy-dialog-subtitle">Se creará dentro de la ubicación actual o de la unidad que elijas.</div><label className="media-label">Nombre de la carpeta<input autoFocus className="media-input" value={folderName} onChange={(event) => setFolderName(event.target.value)} placeholder="Ejemplo: Mis proyectos" /></label><div className="media-actions"><button type="button" className="secondary-action" onClick={() => setFolderDialog(false)}>Cancelar</button><button type="submit" className="primary-action">Crear carpeta</button></div></form></div>}
+
+      {detailsDraft && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Editar detalles"><form className="copy-dialog form-dialog" onSubmit={(event) => { event.preventDefault(); saveDetails() }}><div className="copy-dialog-icon"><Pencil size={25} /></div><div className="copy-dialog-title">Editar detalles</div><div className="copy-dialog-subtitle">La descripción y las categorías se guardan localmente para este elemento.</div><label className="media-label">Descripción<textarea autoFocus className="media-input media-textarea" value={detailsDraft.description} onChange={(event) => setDetailsDraft({ ...detailsDraft, description: event.target.value })} placeholder="Escribe una descripción…" /></label><label className="media-label">Categorías <span className="field-hint">separadas por coma</span><input className="media-input" value={detailsDraft.tags} onChange={(event) => setDetailsDraft({ ...detailsDraft, tags: event.target.value })} placeholder="Trabajo, Importante, Proyecto" /></label><div className="media-actions"><button type="button" className="secondary-action" onClick={() => setDetailsDraft(null)}>Cancelar</button><button type="submit" className="primary-action">Guardar cambios</button></div></form></div>}
+
+      {githubDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Conectar GitHub"><form className="copy-dialog form-dialog" onSubmit={(event) => { event.preventDefault(); void loadGithub() }}><div className="copy-dialog-icon"><GitBranch size={25} /></div><div className="copy-dialog-title">Conectar cuenta de GitHub</div><div className="copy-dialog-subtitle">Carga tus repositorios públicos o usa un token personal para acceder a los privados. El token no se guarda.</div><label className="media-label">Usuario de GitHub<input autoFocus className="media-input" value={githubUser} onChange={(event) => setGithubUser(event.target.value)} placeholder="tu-usuario" /></label><label className="media-label">Token personal <span className="field-hint">opcional para repositorios privados</span><input type="password" className="media-input" value={githubToken} onChange={(event) => setGithubToken(event.target.value)} placeholder="ghp_…" /></label><div className="github-help">Crea un token en GitHub → Settings → Developer settings → Personal access tokens. Para repositorios privados usa permiso de lectura de contenido.</div><div className="media-actions"><button type="button" className="secondary-action" onClick={() => setGithubDialog(false)}>Cancelar</button><button type="submit" className="primary-action" disabled={githubLoading}>{githubLoading ? 'Conectando…' : 'Conectar y cargar repositorios'}</button></div></form></div>}
 
       {youtubePanel && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Descargador de YouTube"><div className="copy-dialog media-dialog"><div className="copy-dialog-icon"><Download size={25} /></div><div className="copy-dialog-title">Descargador multimedia</div><div className="copy-dialog-subtitle">Descarga únicamente vídeos o audios que tengas autorización para guardar.</div><label className="media-label">URL de YouTube<input className="media-input" value={youtubeUrl} onChange={(event) => setYoutubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=…" /></label><div className="media-options"><label className="media-label">Tipo<select className="media-input" value={youtubeMode} onChange={(event) => setYoutubeMode(event.target.value as 'video' | 'audio')}><option value="video">Vídeo</option><option value="audio">Solo audio</option></select></label><label className="media-label">Calidad<select className="media-input" value={youtubeQuality} onChange={(event) => setYoutubeQuality(event.target.value)} disabled={youtubeMode === 'audio'}><option value="best">Mejor disponible</option><option value="2160">2160p</option><option value="1440">1440p</option><option value="1080">1080p</option><option value="720">720p</option><option value="480">480p</option></select></label></div><div className="media-actions"><button className="secondary-action" onClick={() => setYoutubePanel(false)}>Cancelar</button><button className="primary-action" onClick={downloadYoutube} disabled={youtubeBusy}>{youtubeBusy ? 'Descargando…' : 'Elegir carpeta y descargar'}</button></div><p className="media-note">Requiere <strong>yt-dlp</strong> instalado y disponible en PATH de Windows.</p></div></div>}
 

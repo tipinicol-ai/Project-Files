@@ -1,6 +1,8 @@
 appId: com.projectfiles.desktop
 productName: Project Files
 artifactName: Project-Files-Setup-${version}.${ext}
+copyright: Desarrollado por Bryan Castellano
+publish: []
 directories:
   output: release
   buildResources: build
@@ -33,5 +35,6 @@ nsis:
   installerIcon: build/icon.ico
   uninstallerIcon: build/icon.ico
   installerHeaderIcon: build/icon.ico
+  include: build/installer.nsh
   installerLanguages:
     - es
