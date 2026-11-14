@@ -5,49 +5,81 @@ const { existsSync, createReadStream } = require('node:fs')
 const http = require('node:http')
 const os = require('node:os')
 const { randomBytes } = require('node:crypto')
+const { scryptSync, timingSafeEqual } = require('node:crypto')
+const Busboy = require('busboy')
 const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
 const run = promisify(execFile)
 const cancelledCopyJobs = new Set()
 let shareServer = null
 let shareState = null
+const shareSessions = new Map()
 
 const mimeTypes = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.md': 'text/markdown', '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg' }
+const inlineTypes = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.mp4', '.webm', '.mov', '.mp3', '.wav', '.ogg', '.pdf', '.txt', '.md'])
 const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]))
 const lanAddress = () => Object.values(os.networkInterfaces()).flat().find((entry) => entry && entry.family === 'IPv4' && !entry.internal)?.address ?? '127.0.0.1'
-
-function sharePage(title, entries, relativePath, token) {
-  const encodedBase = `/share/${token}/`
-  const parent = relativePath ? `${encodedBase}${relativePath.split('/').slice(0, -1).map(encodeURIComponent).join('/')}` : encodedBase
-  const rows = entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name)).map((entry) => {
-    const href = `${encodedBase}${[relativePath, entry.name].filter(Boolean).map(encodeURIComponent).join('/')}`
-    const icon = entry.isDirectory() ? '▣' : '◈'
-    return `<a class="row" href="${href}"><span class="icon">${icon}</span><span>${escapeHtml(entry.name)}</span><span class="kind">${entry.isDirectory() ? 'Carpeta' : 'Archivo'}</span></a>`
-  }).join('')
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Project Files</title><style>body{margin:0;background:#0b1422;color:#dbe8f6;font:14px Segoe UI,Arial}main{max-width:980px;margin:36px auto;padding:0 20px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:25px}.mark{width:40px;height:40px;display:grid;place-items:center;border-radius:11px;background:#1b89ae;color:#a5f2ff;font-size:23px}.brand strong{font-size:19px}.brand small{display:block;color:#7893ad;margin-top:3px}.card{overflow:hidden;border:1px solid #29445f;border-radius:12px;background:#111f31;box-shadow:0 18px 50px #050b13}.head{padding:18px 20px;border-bottom:1px solid #253a52}.head h1{margin:0;font-size:18px}.head p{margin:6px 0 0;color:#8da7c0;font-size:12px}.row{display:grid;grid-template-columns:30px 1fr 100px;gap:10px;align-items:center;padding:13px 20px;border-bottom:1px solid #1e3248;color:#dbe8f6;text-decoration:none}.row:hover{background:#1b3b57}.icon{color:#68d9ed;font-size:18px}.kind{color:#7894ad;text-align:right;font-size:11px}.back{display:inline-block;margin-bottom:15px;color:#7be0f1;text-decoration:none}@media(max-width:600px){main{margin:20px auto}.row{grid-template-columns:25px 1fr}.kind{display:none}}</style></head><body><main><div class="brand"><div class="mark">▣</div><div><strong>Project Files</strong><small>Compartido en tu red local · solo lectura</small></div></div>${relativePath ? `<a class="back" href="${parent}">← Volver</a>` : ''}<section class="card"><div class="head"><h1>${escapeHtml(title)}</h1><p>Abre carpetas, reproduce imágenes y vídeos o descarga archivos autorizados.</p></div>${rows || '<div class="head"><p>Esta carpeta está vacía.</p></div>'}</section></main></body></html>`
-}
+const shareDataDir = () => path.join(app.getPath('userData'), 'local-share')
+const usersPath = () => path.join(shareDataDir(), 'users.json')
+const passwordHash = (password, salt = randomBytes(16).toString('hex')) => `${salt}:${scryptSync(password, salt, 64).toString('hex')}`
+const passwordMatches = (password, stored) => { try { const [salt, digest] = stored.split(':'); return timingSafeEqual(scryptSync(password, salt, 64), Buffer.from(digest, 'hex')) } catch { return false } }
+async function readUsers() { try { return JSON.parse(await fs.readFile(usersPath(), 'utf8')) } catch { return {} } }
+async function writeUsers(users) { await fs.mkdir(shareDataDir(), { recursive: true }); await fs.writeFile(usersPath(), JSON.stringify(users, null, 2), 'utf8') }
+function cookieValue(request, name) { return (request.headers.cookie ?? '').split(';').map((part) => part.trim().split('=')).find(([key]) => key === name)?.[1] }
+function sessionUser(request) { return shareSessions.get(cookieValue(request, 'pf_session')) }
+function redirect(response, location, cookie) { response.writeHead(302, { Location: location, ...(cookie ? { 'Set-Cookie': cookie } : {}) }); response.end() }
+const pageStyles = `<style>*{box-sizing:border-box}body{margin:0;background:#081321;color:#e7f0fb;font:14px Segoe UI,Arial,sans-serif}.hero{height:201px;background:linear-gradient(90deg,rgba(4,11,20,.28),rgba(5,12,23,.05)),url('/share-assets/banner.jpg') center/cover;display:flex;align-items:center;padding:0 max(28px,calc((100% - 1010px)/2));color:white}.hero h1{margin:0;font-size:40px;letter-spacing:-1px;text-shadow:0 2px 12px #000}.hero p{margin:8px 0 0;font-size:15px;color:#d5e7f2}.hero .service{position:absolute;right:24px;top:20px;display:flex;align-items:center;gap:7px;padding:8px 12px;border:1px solid #8cf2bd66;border-radius:20px;background:#09251bcf;color:#a5f5c8;font-size:11px}.dot{width:7px;height:7px;border-radius:50%;background:#62e7a9;box-shadow:0 0 9px #62e7a9}.wrap{max-width:1010px;margin:34px auto;padding:0 20px}.section-title{margin:0 0 5px;font-size:22px}.sub{margin:0 0 24px;color:#92a8bd}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.card{position:relative;min-height:145px;padding:22px;border:1px solid #304860;border-radius:13px;background:linear-gradient(145deg,#16283b,#122133);box-shadow:0 14px 34px #02070d66;text-decoration:none;color:inherit;transition:.15s}.card:hover{transform:translateY(-2px);border-color:#55cfe8;background:#1a334b}.card.folder{grid-row:span 2;min-height:310px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.card .more{position:absolute;right:14px;top:12px;color:#7792aa}.icon{font-size:43px;color:#57d4ed;margin-bottom:15px}.card strong{display:block;font-size:16px;font-weight:500}.card small{display:block;margin-top:6px;color:#8da6bd}.toolbar{display:flex;align-items:center;justify-content:space-between;margin:30px 0 16px;gap:12px}.upload{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:6px;background:#2b9fc2;color:#fff;font-weight:600}.upload input{max-width:190px}.back{color:#72d9ef;text-decoration:none}.login{min-height:100vh;display:grid;place-items:center;padding:20px;background:#081321}.login-box{width:min(420px,100%);padding:32px;border:1px solid #31516c;border-radius:15px;background:#122337;box-shadow:0 22px 80px #02070d}.login-box h1{margin:0 0 8px;font-size:25px}.login-box p{color:#91a8bd}.login-box label{display:block;margin-top:16px;color:#9db4c8;font-size:12px}.login-box input{width:100%;margin-top:7px;padding:11px;border:1px solid #3a5670;border-radius:6px;background:#091624;color:#fff;font-size:14px}.login-box button{width:100%;margin-top:20px;padding:11px;border:0;border-radius:6px;background:#31a6c8;color:white;font-weight:700}.error{padding:9px;border-radius:5px;background:#5e2435;color:#ffbec8}.note{margin-top:16px;color:#708aa2;font-size:11px}form{margin:0}@media(max-width:760px){.grid{grid-template-columns:1fr}.card.folder{grid-row:auto;min-height:145px}.hero h1{font-size:29px}.hero .service{top:10px;right:10px}}</style>`
+function authPage(mode, message = '') { const register = mode === 'register'; return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project Files · ${register ? 'Crear cuenta' : 'Acceso'}</title>${pageStyles}</head><body><div class="login"><form class="login-box" method="post" action="/share-auth/${register ? 'register' : 'login'}"><div class="icon">▣</div><h1>Project Files</h1><p>${register ? 'Crea un usuario para acceder al espacio compartido.' : 'Inicia sesión para ver los archivos compartidos.'}</p>${message ? `<div class="error">${escapeHtml(message)}</div>` : ''}<label>Usuario<input name="username" required minlength="3" maxlength="40" autocomplete="username"></label><label>Contraseña<input type="password" name="password" required minlength="6" autocomplete="${register ? 'new-password' : 'current-password'}"></label>${register ? '<label>Repetir contraseña<input type="password" name="confirm" required minlength="6" autocomplete="new-password"></label>' : ''}<button type="submit">${register ? 'Crear cuenta' : 'Entrar'}</button><p class="note">${register ? '¿Ya tienes cuenta? <a href="/share-auth/login">Inicia sesión</a>' : '¿Primera vez? <a href="/share-auth/register">Crea tu usuario desde aquí</a>'}</p></form></div></body></html>` }
+async function sharePage(title, entries, relativePath, token, user, message = '') { const encodedBase = `/share/${token}/`; const parent = relativePath ? `${encodedBase}${relativePath.split('/').slice(0, -1).map(encodeURIComponent).join('/')}` : encodedBase; const cards = entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name)).map((entry) => { const href = `${encodedBase}${[relativePath, entry.name].filter(Boolean).map(encodeURIComponent).join('/')}`; const ext = path.extname(entry.name).toLowerCase(); const icon = entry.isDirectory() ? '▣' : ['.mp4','.webm','.mov'].includes(ext) ? '▶' : ['.jpg','.jpeg','.png','.gif','.webp'].includes(ext) ? '▧' : ['.pdf'].includes(ext) ? '▤' : '◈'; return `<a class="card ${entry.isDirectory() ? 'folder' : ''}" href="${href}"><span class="more">•••</span><span class="icon">${icon}</span><strong>${escapeHtml(entry.name)}</strong><small>${entry.isDirectory() ? 'Carpeta' : `${(entry.size / 1024 / 1024).toFixed(1)} MB · Archivo`}</small></a>` }).join(''); return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Project Files</title>${pageStyles}</head><body><header class="hero"><div><h1>Project Files</h1><p>Compartido en tu red local · ${escapeHtml(user)}</p></div><span class="service"><i class="dot"></i>Servicio en línea</span></header><main class="wrap"><div class="toolbar"><div><h2 class="section-title">Mis archivos compartidos</h2><p class="sub">Abre carpetas, reproduce imágenes y vídeos o descarga archivos autorizados.</p></div><form class="upload" method="post" action="/share/${token}/upload" enctype="multipart/form-data"><input type="file" name="files" multiple required><button type="submit">Publicar archivos</button></form></div>${message ? `<div class="error">${escapeHtml(message)}</div>` : ''}${relativePath ? `<a class="back" href="${parent}">← Volver</a>` : ''}<section class="grid">${cards || '<p class="sub">Todavía no hay publicaciones. Usa “Publicar archivos” para añadir vídeos, imágenes o cualquier archivo.</p>'}</section><p class="note">Usuario: ${escapeHtml(user)} · <a href="/share/${token}/logout">Cerrar sesión</a> · Los archivos se guardan en el almacenamiento persistente de Project Files.</p></main></body></html>` }
 
 async function startShareServer(root) {
   if (shareServer) await stopShareServer()
   await fs.access(root)
   const token = randomBytes(10).toString('hex')
-  shareState = { root: path.resolve(root), token }
+  await fs.mkdir(shareDataDir(), { recursive: true })
+  shareState = { root: path.resolve(root), token, dataDir: shareDataDir() }
   shareServer = http.createServer(async (request, response) => {
     try {
       const requestUrl = new URL(request.url ?? '/', 'http://localhost')
       const prefix = `/share/${token}/`
+      if (requestUrl.pathname === '/share-assets/banner.jpg') { const banner = path.join(app.getAppPath(), 'dist', 'share-banner.jpg'); response.writeHead(200, { 'Content-Type': 'image/jpeg' }); createReadStream(banner).pipe(response); return }
+      if (requestUrl.pathname === '/share-auth/login' && request.method === 'GET') { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(authPage('login')); return }
+      if (requestUrl.pathname === '/share-auth/register' && request.method === 'GET') { response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(authPage('register')); return }
+      if (requestUrl.pathname === '/share-auth/login' && request.method === 'POST') {
+        const body = await new Promise((resolve) => { let data = ''; request.on('data', (chunk) => { data += chunk.toString() }); request.on('end', () => resolve(new URLSearchParams(data))) })
+        const users = await readUsers(); const username = String(body.get('username') ?? '').trim().toLowerCase(); const user = users[username]
+        if (!user || !passwordMatches(String(body.get('password') ?? ''), user.hash)) { response.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(authPage('login', 'Usuario o contraseña incorrectos.')); return }
+        const session = randomBytes(32).toString('hex'); shareSessions.set(session, username); redirect(response, `/share/${token}/`, `pf_session=${session}; HttpOnly; SameSite=Lax; Path=/`); return
+      }
+      if (requestUrl.pathname === '/share-auth/register' && request.method === 'POST') {
+        const body = await new Promise((resolve) => { let data = ''; request.on('data', (chunk) => { data += chunk.toString() }); request.on('end', () => resolve(new URLSearchParams(data))) })
+        const users = await readUsers(); const username = String(body.get('username') ?? '').trim().toLowerCase(); const password = String(body.get('password') ?? '')
+        if (!/^[a-z0-9_.-]{3,40}$/.test(username) || password.length < 6 || password !== body.get('confirm')) { response.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(authPage('register', 'Usuario inválido o contraseñas diferentes. Usa al menos 6 caracteres.')); return }
+        if (users[username]) { response.writeHead(409, { 'Content-Type': 'text/html; charset=utf-8' }); response.end(authPage('register', 'Ese usuario ya existe.')); return }
+        users[username] = { hash: passwordHash(password), createdAt: new Date().toISOString() }; await writeUsers(users)
+        const session = randomBytes(32).toString('hex'); shareSessions.set(session, username); redirect(response, `/share/${token}/`, `pf_session=${session}; HttpOnly; SameSite=Lax; Path=/`); return
+      }
       if (!requestUrl.pathname.startsWith(prefix)) { response.writeHead(404); response.end('Not found'); return }
+      const user = sessionUser(request)
+      if (!user) { redirect(response, '/share-auth/login'); return }
+      if (requestUrl.pathname === `${prefix}logout`) { shareSessions.delete(cookieValue(request, 'pf_session')); redirect(response, '/share-auth/login', 'pf_session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/'); return }
+      if (requestUrl.pathname === `${prefix}upload` && request.method === 'POST') {
+        const busboy = Busboy({ headers: request.headers }); const writes = []
+        busboy.on('file', (_field, file, info) => { const safeName = path.basename(info.filename || 'archivo'); const destination = safeChild(shareState.root, `${Date.now()}-${randomBytes(4).toString('hex')}-${safeName}`); const output = require('node:fs').createWriteStream(destination); file.pipe(output); writes.push(new Promise((resolve, reject) => { output.on('finish', resolve); output.on('error', reject); file.on('error', reject) })) })
+        busboy.on('finish', async () => { try { await Promise.all(writes); redirect(response, `${prefix}`) } catch { response.writeHead(500); response.end('No se pudo guardar el archivo') } })
+        request.pipe(busboy); return
+      }
       const relative = decodeURIComponent(requestUrl.pathname.slice(prefix.length)).replaceAll('/', path.sep)
       const target = safeChild(shareState.root, relative)
       const stat = await fs.stat(target)
       if (stat.isDirectory()) {
         const entries = await fs.readdir(target, { withFileTypes: true })
+        const detailedEntries = await Promise.all(entries.map(async (entry) => { try { return Object.assign(entry, { size: entry.isDirectory() ? 0 : (await fs.stat(path.join(target, entry.name))).size }) } catch { return Object.assign(entry, { size: 0 }) } }))
         const relativeUrl = path.relative(shareState.root, target).split(path.sep).filter(Boolean).join('/')
-        const html = sharePage(path.basename(target) || target, entries, relativeUrl, token)
-        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(html); return
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(await sharePage(path.basename(target) || target, detailedEntries, relativeUrl, token, user)); return
       }
       const extension = path.extname(target).toLowerCase()
-      response.writeHead(200, { 'Content-Type': mimeTypes[extension] ?? 'application/octet-stream', 'Content-Length': stat.size, 'Content-Disposition': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.mp4', '.webm', '.mov', '.mp3', '.wav', '.ogg', '.pdf', '.txt', '.md'].includes(extension) ? 'inline' : `attachment; filename="${encodeURIComponent(path.basename(target))}"` })
+      response.writeHead(200, { 'Content-Type': mimeTypes[extension] ?? 'application/octet-stream', 'Content-Length': stat.size, 'Content-Disposition': inlineTypes.has(extension) ? 'inline' : `attachment; filename="${encodeURIComponent(path.basename(target))}"` })
       createReadStream(target).pipe(response)
     } catch (error) { response.writeHead(error.code === 'ENOENT' ? 404 : 403); response.end(error.code === 'ENOENT' ? 'Not found' : 'Access denied') }
   })

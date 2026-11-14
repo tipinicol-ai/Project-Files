@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "busboy": "^1.6.0",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
