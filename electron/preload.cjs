@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld('projectFilesNative', {
   githubList: (username, token) => ipcRenderer.invoke('github-list', username, token),
   githubClone: (cloneUrl, destinationPath) => ipcRenderer.invoke('github-clone', cloneUrl, destinationPath),
   youtubeDownload: (url, quality, mode, destinationPath) => ipcRenderer.invoke('youtube-download', url, quality, mode, destinationPath),
-  shareStart: (folderPath) => ipcRenderer.invoke('share-start', folderPath),
+  shareStart: (folderPath, mode) => ipcRenderer.invoke('share-start', folderPath, mode),
   shareStop: () => ipcRenderer.invoke('share-stop'),
   shareStatus: () => ipcRenderer.invoke('share-status'),
 })

@@ -240,6 +240,14 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .share-empty strong { color: #d9e8f6; font-size: 12px; }
 .share-empty span { font-size: 10px; }
 .share-start { width: 100%; margin-top: 5px; }
+.share-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 18px; }
+.share-mode { min-height: 126px; display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 14px; border: 1px solid rgba(135, 174, 207, .2); border-radius: 8px; background: rgba(5, 13, 24, .48); color: #aec2d7; text-align: left; transition: .15s; }
+.share-mode:hover, .share-mode.selected { border-color: rgba(101, 211, 237, .8); background: rgba(35, 102, 133, .3); color: #e7fbff; transform: translateY(-2px); }
+.share-mode svg { color: #62d6ea; }
+.share-mode.social svg { color: #c09cff; }
+.share-mode strong { font-size: 11px; }
+.share-mode span { color: #7894ad; font-size: 9px; line-height: 1.4; }
+.share-mode.selected.social { border-color: rgba(188, 145, 255, .8); background: rgba(92, 56, 142, .25); }
 .share-close { display: block; margin: 15px auto 0; padding: 5px 9px; background: transparent; color: #7893ad; font-size: 10px; }
 .editor-overlay { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 34px; background: rgba(2, 7, 13, .72); backdrop-filter: blur(4px); }
 .text-editor { width: min(1000px, 100%); height: min(680px, 92vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(94, 193, 222, .35); border-radius: 8px; background: #111923; box-shadow: 0 30px 90px rgba(0,0,0,.65); }
