@@ -1,0 +1,42 @@
+appId: com.projectfiles.socialserver
+productName: Project Files Social Server
+artifactName: Project-Files-Social-Server-Setup-${version}.${ext}
+copyright: Desarrollado por Bryan Castellano
+publish: []
+directories:
+  output: release-social
+  buildResources: build
+files:
+  - dist/**
+  - electron/**
+  - package.json
+extraResources:
+  - from: vendor/yt-dlp.exe
+    to: vendor/yt-dlp.exe
+asar: true
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  legalTrademarks: Project Files
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Project Files Social Server
+  menuCategory: Project Files
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+  uninstallDisplayName: Project Files Social Server
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  installerHeader: build/installer-header.bmp
+  installerSidebar: build/installer-sidebar.bmp
+  include: build/installer-social.nsh
+  installerLanguages:
+    - es
