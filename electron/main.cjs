@@ -46,7 +46,7 @@ async function socialPage(entries, relativePath, token, user, social, profile = 
   const base = `/share/${token}/`
   const avatar = profile.avatar ? `${base}profile-avatar` : ''
   const avatarMarkup = avatar ? `<img class="avatar" src="${avatar}" alt="Foto de ${escapeHtml(user)}">` : `<span class="avatar avatar-empty">${escapeHtml(user).slice(0, 1).toUpperCase()}</span>`
-  const reactions = [{ key: 'fire', icon: '✦', label: 'FUEGO' }, { key: 'crit', icon: '✹', label: 'CRIT' }, { key: 'gg', icon: '◆', label: 'GG' }, { key: 'heart', icon: '♥', label: 'LOVE' }, { key: 'lol', icon: '☻', label: 'LOL' }, { key: 'wow', icon: '!', label: 'WOW' }, { key: 'ko', icon: '✖', label: 'KO' }]
+  const reactions = [{ key: 'fire', icon: '🔥', label: 'FUEGO' }, { key: 'crit', icon: '⚡', label: 'CRIT' }, { key: 'gg', icon: '👍', label: 'GG' }, { key: 'heart', icon: '❤️', label: 'LOVE' }, { key: 'lol', icon: '😂', label: 'LOL' }, { key: 'wow', icon: '😮', label: 'WOW' }, { key: 'ko', icon: '😡', label: 'KO' }]
   const posts = entries.filter((entry) => !entry.isDirectory()).sort((a, b) => b.name.localeCompare(a.name)).map((entry) => {
     const key = entry.name
     const post = social[key] ?? { comments: [], reactions: {}, caption: '', author: user, createdAt: '' }
