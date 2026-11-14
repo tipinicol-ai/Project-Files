@@ -10,6 +10,7 @@ files:
   - dist/**
   - electron/**
   - package.json
+afterPack: electron/after-pack.cjs
 extraResources:
   - from: vendor/yt-dlp.exe
     to: vendor/yt-dlp.exe
