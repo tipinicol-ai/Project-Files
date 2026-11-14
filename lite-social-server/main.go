@@ -62,7 +62,10 @@ func main() {
 	url := "http://127.0.0.1:" + port
 	go func() {
 		time.Sleep(350 * time.Millisecond)
-		if runtime.GOOS == "windows" { /* browser opening is optional */
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+		} else {
+			_ = exec.Command("xdg-open", url).Start()
 		}
 		log.Printf("Project Files Social Server Lite: %s", url)
 	}()
