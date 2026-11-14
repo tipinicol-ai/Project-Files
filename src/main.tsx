@@ -121,10 +121,14 @@ function getIcon(item: FileItem, size = 19) {
   if (item.type === 'Unidad') return <HardDrive size={size} color="#63d7ed" strokeWidth={1.8} />
   if (item.kind === 'folder') return <Folder size={size} fill="#f1b83c" color="#f7c95e" strokeWidth={1.7} />
   if (item.extension === '.xlsx') return <FileSpreadsheet size={size} color="#48bd91" />
+  if (item.extension === '.pptx' || item.extension === '.ppt') return <FileSpreadsheet size={size} color="#e77d5e" />
   if (item.extension === '.png' || item.extension === '.jpg') return <FileImage size={size} color="#b77cff" />
-  if (item.extension === '.zip' || item.extension === '.7z') return <FileArchive size={size} color="#f0b85d" />
-  if (item.extension === '.ts' || item.extension === '.tsx') return <FileCode2 size={size} color="#62b9f4" />
-  if (item.extension === '.docx') return <FileText size={size} color="#5e96e6" />
+  if (['.zip', '.7z', '.rar', '.gz', '.tar'].includes(item.extension ?? '')) return <FileArchive size={size} color="#f0b85d" />
+  if (['.ts', '.tsx', '.js', '.jsx', '.py', '.java', '.rs', '.go', '.c', '.cpp', '.h'].includes(item.extension ?? '')) return <FileCode2 size={size} color="#62b9f4" />
+  if (['.docx', '.doc', '.rtf', '.pdf'].includes(item.extension ?? '')) return <FileText size={size} color={item.extension === '.pdf' ? '#ec777d' : '#5e96e6'} />
+  if (['.txt', '.md', '.log', '.csv', '.json', '.xml', '.yml', '.yaml', '.ini'].includes(item.extension ?? '')) return <FileText size={size} color="#b6c8de" />
+  if (['.mp4', '.mkv', '.avi', '.mov', '.webm', '.mp3', '.wav', '.flac'].includes(item.extension ?? '')) return <FileImage size={size} color="#d58bea" />
+  if (['.exe', '.msi', '.bat', '.cmd', '.com'].includes(item.extension ?? '')) return <FileCode2 size={size} color="#8dd7b4" />
   return <File size={size} color="#9caec8" />
 }
 
@@ -164,7 +168,8 @@ function App() {
   const [query, setQuery] = useState('')
   const [clipboard, setClipboard] = useState<{ ids: string[]; mode: 'copy' | 'move' } | null>(null)
   const [toast, setToast] = useState('')
-  const [copyDialog, setCopyDialog] = useState<{ mode: 'copy' | 'move'; names: string[]; status: 'working' | 'done' | 'error'; message: string } | null>(null)
+  const [copyDialog, setCopyDialog] = useState<{ mode: 'copy' | 'move'; names: string[]; status: 'working' | 'done' | 'error' | 'cancelled'; message: string; jobId?: string } | null>(null)
+  const [textEditor, setTextEditor] = useState<{ path: string; name: string; content: string; dirty: boolean } | null>(null)
   const [youtubePanel, setYoutubePanel] = useState(false)
   const [youtubeUrl, setYoutubeUrl] = useState('')
   const [youtubeQuality, setYoutubeQuality] = useState('1080')
@@ -209,6 +214,7 @@ function App() {
 
   const detailsItem = selectedItems.length === 1 ? selectedItems[0] : undefined
   const totalSelectedSize = selectedItems.reduce((sum, item) => sum + (item.kind === 'folder' ? getFolderSize(item.id, items) : item.size), 0)
+  const detailFolderStats = detailsItem?.kind === 'folder' ? (detailsItem.children ?? []).reduce((stats, id) => { const child = items[id]; if (!child) return stats; child.kind === 'folder' ? stats.folders += 1 : stats.files += 1; return stats }, { folders: 0, files: 0 }) : null
 
   useEffect(() => {
     if (!toast) return
@@ -406,9 +412,10 @@ function App() {
       const paths = clipboard.ids.map((id) => items[id]?.path).filter(Boolean) as string[]
       const names = clipboard.ids.map((id) => items[id]?.name).filter(Boolean) as string[]
       const operationMode = clipboard.mode
-      setCopyDialog({ mode: operationMode, names, status: 'working', message: 'Preparando la operación…' })
-      const operation = clipboard.mode === 'move' ? window.projectFilesNative.move(paths, currentFolderId) : window.projectFilesNative.copy(paths, currentFolderId)
-      void operation.then(() => refreshNativeFolder()).then(() => { setClipboard(null); setCopyDialog({ mode: operationMode, names, status: 'done', message: operationMode === 'move' ? 'Movimiento completado correctamente' : 'Copia completada correctamente' }); notify(operationMode === 'move' ? 'Elementos movidos' : 'Elementos copiados') }).catch((error) => { setCopyDialog({ mode: operationMode, names, status: 'error', message: error instanceof Error ? error.message : 'No se pudo completar la operación' }); notify(`No se pudo completar la operación: ${error instanceof Error ? error.message : 'error desconocido'}`) })
+      const jobId = `copy-${Date.now()}`
+      setCopyDialog({ mode: operationMode, names, status: 'working', message: 'Preparando la operación…', jobId })
+      const operation = clipboard.mode === 'move' ? window.projectFilesNative.move(paths, currentFolderId) : window.projectFilesNative.copy(paths, currentFolderId, jobId)
+      void operation.then(() => refreshNativeFolder()).then(() => { setClipboard(null); setCopyDialog((dialog) => dialog?.jobId === jobId ? { ...dialog, status: 'done', message: operationMode === 'move' ? 'Movimiento completado correctamente' : 'Copia completada correctamente' } : dialog); notify(operationMode === 'move' ? 'Elementos movidos' : 'Elementos copiados') }).catch((error) => { const cancelled = error instanceof Error && error.message === 'COPY_CANCELLED'; setCopyDialog((dialog) => dialog?.jobId === jobId ? { ...dialog, status: cancelled ? 'cancelled' : 'error', message: cancelled ? 'Copia cancelada' : error.message } : dialog); if (!cancelled) notify(`No se pudo completar la operación: ${error instanceof Error ? error.message : 'error desconocido'}`) })
       return
     }
     setItems((previous) => {
@@ -483,8 +490,16 @@ function App() {
 
   const openSelected = (item: FileItem) => {
     if (item.kind === 'folder') goToFolder(item.id)
+    else if (nativeMode && window.projectFilesNative && item.path && ['.txt', '.md', '.log', '.json', '.js', '.ts', '.tsx', '.css', '.html', '.yml', '.yaml', '.xml', '.csv'].includes(item.extension ?? '')) void window.projectFilesNative.readText(item.path).then((content) => setTextEditor({ path: item.path!, name: item.name, content, dirty: false })).catch((error) => notify(`No se pudo abrir el editor: ${error.message}`))
     else if (nativeMode && window.projectFilesNative && item.path) void window.projectFilesNative.openDefault(item.path).then((error) => error && notify(error)).catch((error) => notify(`No se pudo abrir el archivo: ${error.message}`))
     else notify(`Abriendo “${item.name}” con el programa predeterminado`)
+  }
+
+  const cancelCopy = async () => {
+    if (!copyDialog?.jobId || !window.projectFilesNative) return
+    const jobId = copyDialog.jobId
+    await window.projectFilesNative.cancelCopy(jobId)
+    setCopyDialog((dialog) => dialog && dialog.jobId === jobId ? { ...dialog, status: 'cancelled', message: 'Cancelando copia…' } : dialog)
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -643,8 +658,8 @@ function App() {
               <div className="detail-actions"><button className="primary-action" onClick={() => downloadRepo(selectedRepoData)}><Download size={15} />{repoDownloaded[selectedRepoData.id] ? 'Descargado' : 'Descargar proyecto'}</button><button className="secondary-action" onClick={() => notify('Se abrirá GitHub en el navegador')}><GitBranch size={15} />Abrir en GitHub</button></div>
             </div> : detailsItem ? <div className="details-body">
               <div className="details-hero"><div className="big-file-icon">{getIcon(detailsItem, 34)}</div><h2>{detailsItem.name}</h2><p className="path-line">{breadcrumb.map((crumb) => crumb.name).join(' / ')}</p></div>
-              {detailsItem.kind === 'folder' && <div className="usage-ring" style={{ background: `conic-gradient(#55c7e8 0deg 235deg, #26354d 235deg 360deg)` }}><div><strong>{detailsItem.children?.length ?? 0}</strong><span>elementos</span></div></div>}
-              <div className="detail-divider" /><div className="detail-lines"><div><span>Tipo</span><strong>{detailsItem.type}</strong></div><div><span>Elementos</span><strong>{detailsItem.kind === 'folder' ? detailsItem.children?.length ?? 0 : '—'}</strong></div><div><span>Tamaño</span><strong>{detailsItem.kind === 'folder' ? formatBytes(getFolderSize(detailsItem.id, items)) : formatBytes(detailsItem.size)}</strong></div><div><span>Creado</span><strong>{detailsItem.created}</strong></div><div><span>Modificado</span><strong>{detailsItem.modified}</strong></div><div><span>Ubicación</span><strong className="truncate">Mi equipo / {breadcrumb.slice(1).map((crumb) => crumb.name).join(' / ') || detailsItem.name}</strong></div></div>
+              {detailsItem.kind === 'folder' && <div className="usage-ring" style={{ background: detailsItem.type === 'Unidad' && detailsItem.free !== undefined ? `conic-gradient(#55c7e8 0deg ${(detailsItem.size - detailsItem.free) / Math.max(1, detailsItem.size) * 360}deg, #26354d ${(detailsItem.size - detailsItem.free) / Math.max(1, detailsItem.size) * 360}deg 360deg)` : 'conic-gradient(#55c7e8 0deg 235deg, #26354d 235deg 360deg)' }}><div><strong>{detailsItem.type === 'Unidad' ? `${Math.round((detailsItem.size - (detailsItem.free ?? 0)) / Math.max(1, detailsItem.size) * 100)}%` : detailsItem.children?.length ?? 0}</strong><span>{detailsItem.type === 'Unidad' ? 'usado' : 'elementos'}</span></div></div>}
+              <div className="detail-divider" /><div className="detail-lines"><div><span>Tipo</span><strong>{detailsItem.type}</strong></div>{detailsItem.type === 'Unidad' && <><div><span>Espacio usado</span><strong>{formatBytes(detailsItem.size - (detailsItem.free ?? 0))}</strong></div><div><span>Espacio libre</span><strong>{formatBytes(detailsItem.free ?? 0)}</strong></div><div><span>Capacidad total</span><strong>{formatBytes(detailsItem.size)}</strong></div></>}{detailsItem.type !== 'Unidad' && <><div><span>Carpetas</span><strong>{detailFolderStats?.folders ?? (detailsItem.kind === 'folder' ? '0' : '—')}</strong></div><div><span>Archivos</span><strong>{detailFolderStats?.files ?? (detailsItem.kind === 'folder' ? '0' : '—')}</strong></div><div><span>Tamaño</span><strong>{detailsItem.kind === 'folder' ? formatBytes(getFolderSize(detailsItem.id, items)) : formatBytes(detailsItem.size)}</strong></div></>}<div><span>Creado</span><strong>{detailsItem.created}</strong></div><div><span>Modificado</span><strong>{detailsItem.modified}</strong></div><div><span>Ubicación</span><strong className="truncate">Mi equipo / {breadcrumb.slice(1).map((crumb) => crumb.name).join(' / ') || detailsItem.name}</strong></div></div>
               <div className="detail-section"><label>Categorías <button className="inline-edit" onClick={editDetails} title="Editar categorías"><Plus size={13} /></button></label><div className="tag-list">{detailsItem.tags.length ? detailsItem.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>) : <span className="empty-meta">Sin categorías</span>}</div></div><div className="detail-section"><label>Descripción <button className="inline-edit" onClick={editDetails} title="Editar descripción"><Pencil size={12} /></button></label><p className="detail-description">{detailsItem.description || 'Añade una descripción local para este elemento.'}</p></div>
               <div className="detail-actions"><button className="secondary-action" onClick={editDetails}><Pencil size={15} />Editar detalles y etiquetas</button><button className="secondary-action danger-action" onClick={() => deleteSelected([detailsItem.id])}><Trash2 size={15} />Papelera</button></div>
             </div> : <div className="no-selection"><div className="no-selection-icon"><FolderOpen size={26} /></div><h3>Sin selección</h3><p>Selecciona un archivo o carpeta para ver sus detalles.</p></div>}
@@ -667,7 +682,9 @@ function App() {
         <button className="danger-menu" onClick={() => { deleteSelected([contextMenu.id]); setContextMenu(null) }}><Trash2 size={15} />Enviar a la Papelera</button>
       </div>}
 
-      {copyDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Progreso de copia"><div className="copy-dialog"><div className={`copy-dialog-icon ${copyDialog.status}`}><Copy size={25} /></div><div className="copy-dialog-title">{copyDialog.mode === 'move' ? 'Moviendo elementos' : 'Copiando elementos'}</div><div className="copy-dialog-subtitle">{copyDialog.message}</div>{copyDialog.status === 'working' && <div className="copy-progress"><span /></div>}<div className="copy-dialog-destination"><span>Destino</span><strong>{currentFolder?.path ?? currentFolder?.name ?? 'Ubicación actual'}</strong></div><div className="copy-dialog-items">{copyDialog.names.slice(0, 4).map((name) => <span key={name}>{name}</span>)}{copyDialog.names.length > 4 && <span>+ {copyDialog.names.length - 4} más</span>}</div>{copyDialog.status !== 'working' && <button className="primary-action copy-close" onClick={() => setCopyDialog(null)}>{copyDialog.status === 'done' ? 'Listo' : 'Cerrar'}</button>}</div></div>}
+      {copyDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Progreso de copia"><div className="copy-dialog"><div className={`copy-dialog-icon ${copyDialog.status}`}><Copy size={25} /></div><div className="copy-dialog-title">{copyDialog.mode === 'move' ? 'Moviendo elementos' : 'Copiando elementos'}</div><div className="copy-dialog-subtitle">{copyDialog.message}</div>{copyDialog.status === 'working' && <div className="copy-progress"><span /></div>}<div className="copy-dialog-destination"><span>Destino</span><strong>{currentFolder?.path ?? currentFolder?.name ?? 'Ubicación actual'}</strong></div><div className="copy-dialog-items">{copyDialog.names.slice(0, 4).map((name) => <span key={name}>{name}</span>)}{copyDialog.names.length > 4 && <span>+ {copyDialog.names.length - 4} más</span>}</div>{copyDialog.status === 'working' ? <button className="secondary-action copy-close" onClick={() => void cancelCopy()}>Cancelar copia</button> : <button className="primary-action copy-close" onClick={() => setCopyDialog(null)}>{copyDialog.status === 'done' ? 'Cerrar' : 'Cerrar'}</button>}</div></div>}
+
+      {textEditor && <div className="editor-overlay" role="dialog" aria-modal="true" aria-label="Editor de texto"><div className="text-editor"><div className="editor-topbar"><div className="editor-file"><FileCode2 size={16} />{textEditor.name}{textEditor.dirty && <span>●</span>}</div><div className="editor-actions"><button onClick={() => setTextEditor(null)}>Cerrar</button><button className="editor-save" onClick={() => { if (!window.projectFilesNative) return; void window.projectFilesNative.writeText(textEditor.path, textEditor.content).then(() => { setTextEditor({ ...textEditor, dirty: false }); notify('Archivo guardado') }).catch((error) => notify(`No se pudo guardar: ${error.message}`)) }}>Guardar</button></div></div><textarea className="code-editor" spellCheck={false} value={textEditor.content} onChange={(event) => setTextEditor({ ...textEditor, content: event.target.value, dirty: true })} /><div className="editor-status"><span>Texto · UTF-8</span><span>{textEditor.content.split('\n').length} líneas</span><span>Desarrollado por Bryan Castellano</span></div></div></div>}
 
       {folderDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Crear carpeta"><form className="copy-dialog form-dialog" onSubmit={(event) => { event.preventDefault(); void submitCreateFolder() }}><div className="copy-dialog-icon"><FolderPlus size={25} /></div><div className="copy-dialog-title">Nueva carpeta</div><div className="copy-dialog-subtitle">Se creará dentro de la ubicación actual o de la unidad que elijas.</div><label className="media-label">Nombre de la carpeta<input autoFocus className="media-input" value={folderName} onChange={(event) => setFolderName(event.target.value)} placeholder="Ejemplo: Mis proyectos" /></label><div className="media-actions"><button type="button" className="secondary-action" onClick={() => setFolderDialog(false)}>Cancelar</button><button type="submit" className="primary-action">Crear carpeta</button></div></form></div>}
 

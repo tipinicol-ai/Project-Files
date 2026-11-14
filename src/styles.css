@@ -111,7 +111,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .file-row.selected::before { content: ''; position: absolute; left: 0; top: 7px; bottom: 7px; width: 2px; background: var(--cyan); border-radius: 0 3px 3px 0; }
 .drive-card { grid-template-columns: minmax(210px, 1.15fr) minmax(100px, .7fr) minmax(120px, .8fr) minmax(150px, 1fr) minmax(120px, .8fr); }
 .drive-card .file-name { padding-top: 3px; }
-.drive-usage { position: absolute; left: 12px; right: 12px; bottom: 5px; height: 4px; overflow: hidden; border-radius: 8px; background: #26384f; }
+.drive-usage { position: absolute; right: 12px; bottom: 5px; width: 96px; height: 3px; overflow: hidden; border-radius: 8px; background: #26384f; }
 .drive-usage span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #45bfdc, #76e0ee); }
 .file-name { min-width: 0; display: flex; align-items: center; gap: 10px; }
 .file-icon { width: 21px; display: grid; place-items: center; flex-shrink: 0; }
@@ -200,6 +200,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .copy-dialog-icon { width: 51px; height: 51px; display: grid; place-items: center; margin-bottom: 13px; border-radius: 13px; color: #7fe5f4; background: rgba(78, 190, 222, .14); border: 1px solid rgba(115, 217, 239, .3); }
 .copy-dialog-icon.done { color: #7ce0b2; background: rgba(71, 194, 143, .14); border-color: rgba(106, 224, 174, .32); }
 .copy-dialog-icon.error { color: #ff9da5; background: rgba(218, 96, 113, .14); border-color: rgba(239, 134, 145, .32); }
+.copy-dialog-icon.cancelled { color: #f1c47c; background: rgba(221, 160, 69, .14); border-color: rgba(229, 178, 93, .32); }
 .copy-dialog-title { color: #f0f7ff; font-size: 16px; font-weight: 600; }
 .copy-dialog-subtitle { margin-top: 5px; color: #91a9c2; font-size: 11px; }
 .copy-progress { height: 6px; margin: 19px 0 17px; overflow: hidden; border-radius: 10px; background: #273c55; }
@@ -224,6 +225,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .media-input:disabled { cursor: not-allowed; opacity: .5; }
 .field-hint { color: #7189a2; font-size: 9px; font-weight: 400; }
 .github-help { margin-top: 13px; padding: 9px; border-left: 2px solid #54c8e4; background: rgba(50, 132, 162, .1); color: #839bb4; font-size: 9px; line-height: 1.5; }
+.editor-overlay { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 34px; background: rgba(2, 7, 13, .72); backdrop-filter: blur(4px); }
+.text-editor { width: min(1000px, 100%); height: min(680px, 92vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(94, 193, 222, .35); border-radius: 8px; background: #111923; box-shadow: 0 30px 90px rgba(0,0,0,.65); }
+.editor-topbar { min-height: 47px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 17px; border-bottom: 1px solid rgba(150, 183, 216, .14); background: #172535; }
+.editor-file { display: flex; align-items: center; gap: 8px; color: #d7e6f5; font-size: 12px; }
+.editor-file svg { color: #6acfe8; }
+.editor-file span { color: #f5bd66; font-size: 14px; }
+.editor-actions { display: flex; gap: 7px; }
+.editor-actions button { min-width: 64px; padding: 6px 11px; border: 1px solid rgba(143, 177, 211, .18); border-radius: 4px; background: rgba(110, 149, 185, .09); color: #b7cade; font-size: 10px; }
+.editor-actions .editor-save { border-color: rgba(115, 221, 237, .35); background: #2f829f; color: #effcff; }
+.code-editor { flex: 1; min-height: 0; padding: 19px 22px; border: 0; outline: 0; resize: none; background: #0d141d; color: #c9d7e8; caret-color: #65d9ef; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 13px; line-height: 1.65; tab-size: 2; }
+.editor-status { display: flex; gap: 18px; padding: 6px 13px; border-top: 1px solid rgba(150, 183, 216, .12); background: #152232; color: #778da7; font-size: 9px; }
 
 @media (max-width: 1050px) {
   .desktop-stage { padding: 0; }

@@ -5,6 +5,7 @@ const { existsSync } = require('node:fs')
 const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
 const run = promisify(execFile)
+const cancelledCopyJobs = new Set()
 
 async function listWindowsDrives() {
   const drives = []
@@ -82,9 +83,22 @@ ipcMain.handle('choose-files', async () => {
 })
 ipcMain.handle('list-directory', (_event, folderPath) => listDirectory(folderPath))
 ipcMain.handle('open-default', (_event, filePath) => shell.openPath(filePath))
+ipcMain.handle('read-text', async (_event, filePath) => {
+  const stat = await fs.stat(filePath)
+  if (stat.size > 5 * 1024 * 1024) throw new Error('El archivo supera el límite de 5 MB del editor')
+  return fs.readFile(filePath, 'utf8')
+})
+ipcMain.handle('write-text', async (_event, filePath, content) => fs.writeFile(filePath, String(content), 'utf8'))
 ipcMain.handle('show-in-folder', (_event, filePath) => shell.showItemInFolder(filePath))
 ipcMain.handle('create-folder', async (_event, parentPath, name) => fs.mkdir(safeChild(parentPath, name), { recursive: false }))
-ipcMain.handle('copy', async (_event, sourcePaths, destinationPath) => Promise.all(sourcePaths.map(async (source) => fs.cp(source, safeChild(destinationPath, path.basename(source)), { recursive: true, errorOnExist: false }))))
+ipcMain.handle('copy', async (_event, sourcePaths, destinationPath, jobId = '') => {
+  for (const source of sourcePaths) {
+    if (jobId && cancelledCopyJobs.has(jobId)) { cancelledCopyJobs.delete(jobId); throw new Error('COPY_CANCELLED') }
+    await fs.cp(source, safeChild(destinationPath, path.basename(source)), { recursive: true, errorOnExist: false })
+  }
+  if (jobId) cancelledCopyJobs.delete(jobId)
+})
+ipcMain.handle('copy-cancel', (_event, jobId) => { if (jobId) cancelledCopyJobs.add(jobId); return true })
 ipcMain.handle('move', async (_event, sourcePaths, destinationPath) => Promise.all(sourcePaths.map(async (source) => {
   const target = safeChild(destinationPath, path.basename(source))
   try { await fs.rename(source, target) } catch (error) {
