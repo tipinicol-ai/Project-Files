@@ -1,11 +1,67 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs/promises')
-const { existsSync } = require('node:fs')
+const { existsSync, createReadStream } = require('node:fs')
+const http = require('node:http')
+const os = require('node:os')
+const { randomBytes } = require('node:crypto')
 const { execFile } = require('node:child_process')
 const { promisify } = require('node:util')
 const run = promisify(execFile)
 const cancelledCopyJobs = new Set()
+let shareServer = null
+let shareState = null
+
+const mimeTypes = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.txt': 'text/plain', '.md': 'text/markdown', '.pdf': 'application/pdf', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg' }
+const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]))
+const lanAddress = () => Object.values(os.networkInterfaces()).flat().find((entry) => entry && entry.family === 'IPv4' && !entry.internal)?.address ?? '127.0.0.1'
+
+function sharePage(title, entries, relativePath, token) {
+  const encodedBase = `/share/${token}/`
+  const parent = relativePath ? `${encodedBase}${relativePath.split('/').slice(0, -1).map(encodeURIComponent).join('/')}` : encodedBase
+  const rows = entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name)).map((entry) => {
+    const href = `${encodedBase}${[relativePath, entry.name].filter(Boolean).map(encodeURIComponent).join('/')}`
+    const icon = entry.isDirectory() ? '▣' : '◈'
+    return `<a class="row" href="${href}"><span class="icon">${icon}</span><span>${escapeHtml(entry.name)}</span><span class="kind">${entry.isDirectory() ? 'Carpeta' : 'Archivo'}</span></a>`
+  }).join('')
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)} · Project Files</title><style>body{margin:0;background:#0b1422;color:#dbe8f6;font:14px Segoe UI,Arial}main{max-width:980px;margin:36px auto;padding:0 20px}.brand{display:flex;align-items:center;gap:12px;margin-bottom:25px}.mark{width:40px;height:40px;display:grid;place-items:center;border-radius:11px;background:#1b89ae;color:#a5f2ff;font-size:23px}.brand strong{font-size:19px}.brand small{display:block;color:#7893ad;margin-top:3px}.card{overflow:hidden;border:1px solid #29445f;border-radius:12px;background:#111f31;box-shadow:0 18px 50px #050b13}.head{padding:18px 20px;border-bottom:1px solid #253a52}.head h1{margin:0;font-size:18px}.head p{margin:6px 0 0;color:#8da7c0;font-size:12px}.row{display:grid;grid-template-columns:30px 1fr 100px;gap:10px;align-items:center;padding:13px 20px;border-bottom:1px solid #1e3248;color:#dbe8f6;text-decoration:none}.row:hover{background:#1b3b57}.icon{color:#68d9ed;font-size:18px}.kind{color:#7894ad;text-align:right;font-size:11px}.back{display:inline-block;margin-bottom:15px;color:#7be0f1;text-decoration:none}@media(max-width:600px){main{margin:20px auto}.row{grid-template-columns:25px 1fr}.kind{display:none}}</style></head><body><main><div class="brand"><div class="mark">▣</div><div><strong>Project Files</strong><small>Compartido en tu red local · solo lectura</small></div></div>${relativePath ? `<a class="back" href="${parent}">← Volver</a>` : ''}<section class="card"><div class="head"><h1>${escapeHtml(title)}</h1><p>Abre carpetas, reproduce imágenes y vídeos o descarga archivos autorizados.</p></div>${rows || '<div class="head"><p>Esta carpeta está vacía.</p></div>'}</section></main></body></html>`
+}
+
+async function startShareServer(root) {
+  if (shareServer) await stopShareServer()
+  await fs.access(root)
+  const token = randomBytes(10).toString('hex')
+  shareState = { root: path.resolve(root), token }
+  shareServer = http.createServer(async (request, response) => {
+    try {
+      const requestUrl = new URL(request.url ?? '/', 'http://localhost')
+      const prefix = `/share/${token}/`
+      if (!requestUrl.pathname.startsWith(prefix)) { response.writeHead(404); response.end('Not found'); return }
+      const relative = decodeURIComponent(requestUrl.pathname.slice(prefix.length)).replaceAll('/', path.sep)
+      const target = safeChild(shareState.root, relative)
+      const stat = await fs.stat(target)
+      if (stat.isDirectory()) {
+        const entries = await fs.readdir(target, { withFileTypes: true })
+        const relativeUrl = path.relative(shareState.root, target).split(path.sep).filter(Boolean).join('/')
+        const html = sharePage(path.basename(target) || target, entries, relativeUrl, token)
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(html); return
+      }
+      const extension = path.extname(target).toLowerCase()
+      response.writeHead(200, { 'Content-Type': mimeTypes[extension] ?? 'application/octet-stream', 'Content-Length': stat.size, 'Content-Disposition': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.mp4', '.webm', '.mov', '.mp3', '.wav', '.ogg', '.pdf', '.txt', '.md'].includes(extension) ? 'inline' : `attachment; filename="${encodeURIComponent(path.basename(target))}"` })
+      createReadStream(target).pipe(response)
+    } catch (error) { response.writeHead(error.code === 'ENOENT' ? 404 : 403); response.end(error.code === 'ENOENT' ? 'Not found' : 'Access denied') }
+  })
+  await new Promise((resolve, reject) => { shareServer.once('error', reject); shareServer.listen(0, '0.0.0.0', resolve) })
+  const port = shareServer.address().port
+  return { root: shareState.root, port, url: `http://${lanAddress()}:${port}/share/${token}/`, localUrl: `http://127.0.0.1:${port}/share/${token}/` }
+}
+
+function stopShareServer() {
+  if (!shareServer) return Promise.resolve()
+  const current = shareServer
+  shareServer = null; shareState = null
+  return new Promise((resolve) => current.close(() => resolve()))
+}
 
 async function listWindowsDrives() {
   const drives = []
@@ -81,6 +137,9 @@ ipcMain.handle('choose-files', async () => {
   const result = await dialog.showOpenDialog({ properties: ['openFile', 'multiSelections'] })
   return result.canceled ? [] : result.filePaths
 })
+ipcMain.handle('share-start', (_event, folderPath) => startShareServer(folderPath))
+ipcMain.handle('share-stop', () => stopShareServer())
+ipcMain.handle('share-status', () => shareState && shareServer ? { root: shareState.root, port: shareServer.address().port, url: `http://${lanAddress()}:${shareServer.address().port}/share/${shareState.token}/`, localUrl: `http://127.0.0.1:${shareServer.address().port}/share/${shareState.token}/` } : null)
 ipcMain.handle('list-directory', (_event, folderPath) => listDirectory(folderPath))
 ipcMain.handle('open-default', (_event, filePath) => shell.openPath(filePath))
 ipcMain.handle('read-text', async (_event, filePath) => {
@@ -144,4 +203,5 @@ ipcMain.handle('extract', async (_event, archivePath, destinationPath) => {
 })
 
 app.whenReady().then(() => { createWindow(); app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() }) })
+app.on('before-quit', () => { void stopShareServer() })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })

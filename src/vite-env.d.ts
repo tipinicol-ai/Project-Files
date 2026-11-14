@@ -39,6 +39,9 @@ type ProjectFilesNative = {
   githubList: (username: string, token?: string) => Promise<Array<Record<string, unknown>>>
   githubClone: (cloneUrl: string, destinationPath: string) => Promise<void>
   youtubeDownload: (url: string, quality: string, mode: 'video' | 'audio', destinationPath: string) => Promise<void>
+  shareStart: (folderPath: string) => Promise<{ root: string; port: number; url: string; localUrl: string }>
+  shareStop: () => Promise<void>
+  shareStatus: () => Promise<{ root: string; port: number; url: string; localUrl: string } | null>
 }
 
 declare global {

@@ -187,6 +187,9 @@ function App() {
   const [githubDialog, setGithubDialog] = useState(false)
   const [githubUser, setGithubUser] = useState(() => localStorage.getItem('project-files-github-user') ?? '')
   const [githubToken, setGithubToken] = useState('')
+  const [shareDialog, setShareDialog] = useState(false)
+  const [shareInfo, setShareInfo] = useState<{ root: string; port: number; url: string; localUrl: string } | null>(null)
+  const [shareBusy, setShareBusy] = useState(false)
 
   const currentFolder = items[currentFolderId]
   const selectedItems = selection.map((id) => items[id]).filter(Boolean)
@@ -231,6 +234,28 @@ function App() {
   }, [])
 
   const notify = (message: string) => setToast(message)
+
+  const openShareDialog = async () => {
+    if (!nativeMode || !window.projectFilesNative) return notify('El servidor local funciona en el instalador de Windows')
+    setShareDialog(true)
+    try { setShareInfo(await window.projectFilesNative.shareStatus()) } catch { setShareInfo(null) }
+  }
+
+  const startShare = async () => {
+    if (!window.projectFilesNative) return
+    const folder = await window.projectFilesNative.chooseFolder()
+    if (!folder) return
+    setShareBusy(true)
+    try { setShareInfo(await window.projectFilesNative.shareStart(folder)); notify('Servidor local levantado en tu red') } catch (error) { notify(`No se pudo levantar el servidor: ${error instanceof Error ? error.message : 'error desconocido'}`) }
+    finally { setShareBusy(false) }
+  }
+
+  const stopShare = async () => {
+    if (!window.projectFilesNative) return
+    await window.projectFilesNative.shareStop()
+    setShareInfo(null)
+    notify('Servidor local cerrado')
+  }
 
   const refreshNativeFolder = async (folderPath = currentFolderId, pushHistory = false) => {
     if (!window.projectFilesNative) return
@@ -598,6 +623,7 @@ function App() {
                 <button className={section === 'files' && currentFolderId === 'computer' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('files'); void refreshNativeDrives() }}><Home size={16} />Este equipo</button>
                 <button className="nav-item" onClick={() => { if (window.projectFilesNative) void window.projectFilesNative.chooseFolder().then((folder) => { if (folder) return refreshNativeFolder(folder, true) }) }}><FolderOpen size={16} />Abrir carpeta</button>
                 <button className={section === 'github' ? 'nav-item active' : 'nav-item'} onClick={() => { setSection('github'); setGithubDialog(true) }}><GitBranch size={16} />Proyectos de GitHub</button>
+                <button className={shareInfo ? 'nav-item share-active' : 'nav-item'} onClick={() => void openShareDialog()}><Cloud size={16} />Servidor en red {shareInfo && <span className="share-dot" />}</button>
                 <button className={youtubePanel ? 'nav-item active' : 'nav-item'} onClick={() => setYoutubePanel(true)}><Download size={16} />Descargador multimedia</button>
                 <button className="nav-item" onClick={() => document.querySelector<HTMLInputElement>('.search-wrap input')?.focus()}><Search size={16} />Buscar</button>
               </> : <>
@@ -685,6 +711,8 @@ function App() {
       {copyDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Progreso de copia"><div className="copy-dialog"><div className={`copy-dialog-icon ${copyDialog.status}`}><Copy size={25} /></div><div className="copy-dialog-title">{copyDialog.mode === 'move' ? 'Moviendo elementos' : 'Copiando elementos'}</div><div className="copy-dialog-subtitle">{copyDialog.message}</div>{copyDialog.status === 'working' && <div className="copy-progress"><span /></div>}<div className="copy-dialog-destination"><span>Destino</span><strong>{currentFolder?.path ?? currentFolder?.name ?? 'Ubicación actual'}</strong></div><div className="copy-dialog-items">{copyDialog.names.slice(0, 4).map((name) => <span key={name}>{name}</span>)}{copyDialog.names.length > 4 && <span>+ {copyDialog.names.length - 4} más</span>}</div>{copyDialog.status === 'working' ? <button className="secondary-action copy-close" onClick={() => void cancelCopy()}>Cancelar copia</button> : <button className="primary-action copy-close" onClick={() => setCopyDialog(null)}>{copyDialog.status === 'done' ? 'Cerrar' : 'Cerrar'}</button>}</div></div>}
 
       {textEditor && <div className="editor-overlay" role="dialog" aria-modal="true" aria-label="Editor de texto"><div className="text-editor"><div className="editor-topbar"><div className="editor-file"><FileCode2 size={16} />{textEditor.name}{textEditor.dirty && <span>●</span>}</div><div className="editor-actions"><button onClick={() => setTextEditor(null)}>Cerrar</button><button className="editor-save" onClick={() => { if (!window.projectFilesNative) return; void window.projectFilesNative.writeText(textEditor.path, textEditor.content).then(() => { setTextEditor({ ...textEditor, dirty: false }); notify('Archivo guardado') }).catch((error) => notify(`No se pudo guardar: ${error.message}`)) }}>Guardar</button></div></div><textarea className="code-editor" spellCheck={false} value={textEditor.content} onChange={(event) => setTextEditor({ ...textEditor, content: event.target.value, dirty: true })} /><div className="editor-status"><span>Texto · UTF-8</span><span>{textEditor.content.split('\n').length} líneas</span><span>Desarrollado por Bryan Castellano</span></div></div></div>}
+
+      {shareDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Servidor en red local"><div className="copy-dialog share-dialog"><div className="copy-dialog-icon"><Cloud size={25} /></div><div className="copy-dialog-title">Servidor de archivos en red</div><div className="copy-dialog-subtitle">Comparte una carpeta con otros dispositivos conectados a tu misma red Wi-Fi o LAN.</div>{shareInfo ? <><div className="share-online"><span className="share-status-dot" />Servidor activo</div><label className="media-label">Dirección para compartir<input readOnly className="media-input share-url" value={shareInfo.url} onFocus={(event) => event.currentTarget.select()} /></label><div className="share-path"><span>Carpeta compartida</span><strong>{shareInfo.root}</strong></div><div className="share-actions"><button className="secondary-action" onClick={() => navigator.clipboard?.writeText(shareInfo.url).then(() => notify('Dirección copiada'))}><Copy size={14} />Copiar dirección</button><button className="primary-action" onClick={() => void stopShare()}>Cerrar servidor</button></div><p className="media-note">Abre la dirección desde otro dispositivo de tu red. Si Windows muestra una alerta del Firewall, permite el acceso en redes privadas.</p></> : <><div className="share-empty"><Cloud size={25} /><strong>No hay ningún servidor activo</strong><span>Elige una carpeta y Project Files mostrará la dirección web local.</span></div><button className="primary-action share-start" disabled={shareBusy} onClick={() => void startShare()}>{shareBusy ? 'Levantando servidor…' : 'Elegir carpeta y levantar servidor'}</button></>}<button className="share-close" onClick={() => setShareDialog(false)}>Cerrar ventana</button></div></div>}
 
       {folderDialog && <div className="copy-overlay" role="dialog" aria-modal="true" aria-label="Crear carpeta"><form className="copy-dialog form-dialog" onSubmit={(event) => { event.preventDefault(); void submitCreateFolder() }}><div className="copy-dialog-icon"><FolderPlus size={25} /></div><div className="copy-dialog-title">Nueva carpeta</div><div className="copy-dialog-subtitle">Se creará dentro de la ubicación actual o de la unidad que elijas.</div><label className="media-label">Nombre de la carpeta<input autoFocus className="media-input" value={folderName} onChange={(event) => setFolderName(event.target.value)} placeholder="Ejemplo: Mis proyectos" /></label><div className="media-actions"><button type="button" className="secondary-action" onClick={() => setFolderDialog(false)}>Cancelar</button><button type="submit" className="primary-action">Crear carpeta</button></div></form></div>}
 

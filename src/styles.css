@@ -225,6 +225,22 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outl
 .media-input:disabled { cursor: not-allowed; opacity: .5; }
 .field-hint { color: #7189a2; font-size: 9px; font-weight: 400; }
 .github-help { margin-top: 13px; padding: 9px; border-left: 2px solid #54c8e4; background: rgba(50, 132, 162, .1); color: #839bb4; font-size: 9px; line-height: 1.5; }
+.share-active { color: #dffbff !important; }
+.share-dot, .share-status-dot { width: 7px; height: 7px; display: inline-block; margin-left: auto; border-radius: 50%; background: #6be2b1; box-shadow: 0 0 8px rgba(107,226,177,.7); }
+.share-dialog { width: min(500px, calc(100vw - 38px)); }
+.share-online { display: flex; align-items: center; gap: 8px; margin-top: 18px; color: #81e4b6; font-size: 11px; font-weight: 600; }
+.share-url { color: #8be8f5; font-family: 'Cascadia Code', Consolas, monospace; }
+.share-path { display: flex; flex-direction: column; gap: 5px; margin-top: 12px; padding: 10px; border-radius: 6px; background: rgba(4, 12, 23, .35); }
+.share-path span { color: #7189a4; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.share-path strong { overflow: hidden; color: #cbdced; font-size: 10px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.share-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 16px; }
+.share-actions button { width: 100%; }
+.share-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 22px 10px; color: #6f87a1; text-align: center; }
+.share-empty svg { color: #6ed9eb; }
+.share-empty strong { color: #d9e8f6; font-size: 12px; }
+.share-empty span { font-size: 10px; }
+.share-start { width: 100%; margin-top: 5px; }
+.share-close { display: block; margin: 15px auto 0; padding: 5px 9px; background: transparent; color: #7893ad; font-size: 10px; }
 .editor-overlay { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 34px; background: rgba(2, 7, 13, .72); backdrop-filter: blur(4px); }
 .text-editor { width: min(1000px, 100%); height: min(680px, 92vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(94, 193, 222, .35); border-radius: 8px; background: #111923; box-shadow: 0 30px 90px rgba(0,0,0,.65); }
 .editor-topbar { min-height: 47px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 17px; border-bottom: 1px solid rgba(150, 183, 216, .14); background: #172535; }
