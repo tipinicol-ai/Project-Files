@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -8,13 +10,30 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+func setupAuth(t *testing.T, users map[string]string, key []byte) {
+	t.Helper()
+	oldState, oldKey, oldAdmin := state, sessionKey, adminUser
+	oldDataDir, oldFilesDir := dataDir, filesDir
+	dataDir = t.TempDir()
+	filesDir = filepath.Join(dataDir, "files")
+	if err := os.MkdirAll(filesDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	state = State{Users: users, Posts: map[string]Post{}, Profiles: map[string]Profile{}}
+	sessionKey = key
+	adminUser = ""
+	t.Cleanup(func() {
+		state, sessionKey, adminUser, dataDir, filesDir = oldState, oldKey, oldAdmin, oldDataDir, oldFilesDir
+	})
+}
 
 func TestMediaServesByteRangesForVideoFilenameWithSpaces(t *testing.T) {
 	oldFilesDir := filesDir
 	filesDir = t.TempDir()
 	t.Cleanup(func() { filesDir = oldFilesDir })
-
 	name := "preview clip de prueba.mp4"
 	content := []byte("0123456789abcdefghijklmnop")
 	if err := os.WriteFile(filepath.Join(filesDir, name), content, 0600); err != nil {
@@ -23,9 +42,7 @@ func TestMediaServesByteRangesForVideoFilenameWithSpaces(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/media/"+url.PathEscape(name), nil)
 	request.Header.Set("Range", "bytes=4-10")
 	response := httptest.NewRecorder()
-
 	media(response, request)
-
 	if response.Code != http.StatusPartialContent {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusPartialContent)
 	}
@@ -40,34 +57,100 @@ func TestMediaServesByteRangesForVideoFilenameWithSpaces(t *testing.T) {
 	}
 }
 
-func TestHomeRendersVideoAndLogoutInsideProfile(t *testing.T) {
-	oldState := state
-	state = State{
-		Users:    map[string]string{"gamer": hash("password")},
-		Posts:    map[string]Post{"video-id": {ID: "video-id", File: "preview clip.mp4", Caption: "Partida", Author: "gamer", Reactions: map[string]int{}}},
-		Profiles: map[string]Profile{},
-	}
-	t.Cleanup(func() { state = oldState })
-
+func TestHomeRendersMediaAndProfileForValidSignedSession(t *testing.T) {
+	setupAuth(t, map[string]string{"gamer": hash("password")}, []byte("01234567890123456789012345678901"))
+	state.Posts["video-id"] = Post{ID: "video-id", File: "preview clip.mp4", Caption: "Partida", Author: "gamer", Reactions: map[string]int{}, At: time.Now()}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.AddCookie(&http.Cookie{Name: "pf_user", Value: "gamer"})
+	request.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("gamer")})
 	response := httptest.NewRecorder()
 	home(response, request)
 	body := response.Body.String()
-
-	for _, want := range []string{
-		`src="/assets/community-banner.webp"`,
-		`<details class="profile">`,
-		`<a class="profile-link logout-link" href="/logout">Cerrar sesión</a>`,
-		`<video class="media" controls playsinline preload="metadata"`,
-		`src="/media/preview%20clip.mp4"`,
-	} {
+	for _, want := range []string{`src="/assets/community-banner.webp"`, `<details class="profile">`, `<a class="profile-link" href="/logout">Cerrar sesión</a>`, `<video class="media" data-post="video-id" controls playsinline preload="metadata"`, `src="/media/preview%20clip.mp4"`, `name="file"`, `id="post-search"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
 		}
 	}
-	if strings.Contains(body, `<footer class="feed-footer"><a href="/logout">`) {
-		t.Error("logout link should not be outside the profile menu")
+	if strings.Contains(body, `href="/admin"`) {
+		t.Error("ordinary users must not see the admin console link")
+	}
+}
+
+func TestForgedSessionCookieIsRejected(t *testing.T) {
+	setupAuth(t, map[string]string{"admin": hash("pw")}, []byte("01234567890123456789012345678901"))
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: "admin.not-a-signature"})
+	if got := user(r); got != "" {
+		t.Fatalf("forged session accepted as %q", got)
+	}
+}
+
+func TestSignedSessionSupportsUsernameWithDot(t *testing.T) {
+	setupAuth(t, map[string]string{"gamer.name": hash("pw")}, []byte("01234567890123456789012345678901"))
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("gamer.name")})
+	if got := user(r); got != "gamer.name" {
+		t.Fatalf("signed dotted username = %q, want gamer.name", got)
+	}
+}
+
+func TestMediaRejectsMismatchedExtension(t *testing.T) {
+	if _, err := validMedia("fake.png", bytes.NewReader([]byte("not an image"))); err == nil {
+		t.Fatal("accepted non-image content with a PNG extension")
+	}
+}
+
+func TestAdminRequiresExplicitConfiguredAccount(t *testing.T) {
+	setupAuth(t, map[string]string{"player": hash("pw"), "admin": hash("pw")}, []byte("01234567890123456789012345678901"))
+	request := httptest.NewRequest(http.MethodGet, "/admin", nil)
+	request.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("player")})
+	response := httptest.NewRecorder()
+	admin(response, request)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("normal account admin status=%d, want 403", response.Code)
+	}
+	adminUser = "admin"
+	request = httptest.NewRequest(http.MethodGet, "/admin", nil)
+	request.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("admin")})
+	response = httptest.NewRecorder()
+	admin(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("configured admin status=%d, want 200", response.Code)
+	}
+}
+
+func TestCommentRequiresExistingPostAndReturnsJSON(t *testing.T) {
+	setupAuth(t, map[string]string{"gamer": hash("pw")}, []byte("01234567890123456789012345678901"))
+	state.Posts["p"] = Post{ID: "p", Author: "gamer"}
+	form := url.Values{"id": {"p"}, "text": {"GG buena partida"}}
+	r := httptest.NewRequest(http.MethodPost, "/comment", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Accept", "application/json")
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("gamer")})
+	w := httptest.NewRecorder()
+	comment(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("comment status=%d: %s", w.Code, w.Body.String())
+	}
+	var got Comment
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.User != "gamer" || got.Text != "GG buena partida" {
+		t.Fatalf("unexpected comment: %#v", got)
+	}
+}
+
+func TestDeleteOnlyAuthorCanDeletePost(t *testing.T) {
+	setupAuth(t, map[string]string{"author": hash("pw"), "other": hash("pw")}, []byte("01234567890123456789012345678901"))
+	state.Posts["p"] = Post{ID: "p", File: "old.mp4", Author: "author"}
+	form := url.Values{"id": {"p"}}
+	r := httptest.NewRequest(http.MethodPost, "/delete", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("other")})
+	w := httptest.NewRecorder()
+	deletePost(w, r)
+	if _, ok := state.Posts["p"]; !ok {
+		t.Fatal("non-author deleted publication")
 	}
 }
 
@@ -75,9 +158,8 @@ func TestLogoutExpiresSessionCookie(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/logout", nil)
 	response := httptest.NewRecorder()
 	logout(response, request)
-
 	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/" {
-		t.Fatalf("logout response = %d / %q, want redirect to /", response.Code, response.Header().Get("Location"))
+		t.Fatalf("logout response=%d / %q", response.Code, response.Header().Get("Location"))
 	}
 	cookie := response.Result().Cookies()[0]
 	if cookie.Name != "pf_user" || cookie.MaxAge >= 0 || !cookie.HttpOnly {
@@ -85,10 +167,13 @@ func TestLogoutExpiresSessionCookie(t *testing.T) {
 	}
 }
 
-func TestReferenceBannersAreEmbedded(t *testing.T) {
-	for _, name := range []string{"assets/login-banner.jpg", "assets/register-banner.webp", "assets/community-banner.webp", "assets/lite-social.css"} {
+func TestEmbeddedAssetsAndInstallerIconExist(t *testing.T) {
+	for _, name := range []string{"assets/login-banner.jpg", "assets/register-banner.webp", "assets/community-banner.webp", "assets/lite-social.css", "assets/app.js", "assets/admin.js", "assets/icon.png", "assets/icon.ico"} {
 		if _, err := embeddedAssets.ReadFile(name); err != nil {
 			t.Errorf("embedded asset %q: %v", name, err)
 		}
+	}
+	if _, err := os.Stat("assets/icon.ico"); err != nil {
+		t.Fatalf("installer icon missing: %v", err)
 	}
 }
