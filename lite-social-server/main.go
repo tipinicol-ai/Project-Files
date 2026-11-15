@@ -43,6 +43,9 @@ type Profile struct {
 	Game  string
 	Photo string
 	Bio   string
+	Theme string
+	Badge string
+	Cover string
 }
 type VictoryRecord struct {
 	Name      string
@@ -94,6 +97,7 @@ func main() {
 	http.HandleFunc("/profile", profile)
 	http.HandleFunc("/user", viewProfile)
 	http.HandleFunc("/profile/photo", profilePhoto)
+	http.HandleFunc("/profile/cover", profileCover)
 	http.HandleFunc("/delete", deletePost)
 	http.HandleFunc("/edit", editPost)
 	port := "8787"
@@ -238,9 +242,52 @@ func method(w http.ResponseWriter, r *http.Request, want string) bool {
 	}
 	return true
 }
-func layout(title, body string) string {
-	doc := `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#061722"><title>{{TITLE}} · Gamer Community</title><link rel="icon" type="image/png" href="/assets/icon.png"><link rel="stylesheet" href="/assets/lite-social.css"></head><body>{{BODY}}</body></html>`
-	return strings.NewReplacer("{{TITLE}}", template.HTMLEscapeString(title), "{{BODY}}", body).Replace(doc)
+
+var profileThemes = []struct{ Key, Label string }{{"ocean", "Océano (clásico)"}, {"ember", "Fuego"}, {"forest", "Bosque"}, {"violet", "Violeta"}, {"sunset", "Atardecer"}}
+var profileBadges = []struct{ Key, Label string }{{"", "Sin insignia"}, {"team", "🤝 Buen compañero"}, {"strategist", "⚡ Estratega"}, {"creator", "🎬 Creador"}, {"competitor", "🏆 Competidor"}, {"nightowl", "🌙 Noctámbulo"}}
+
+func validTheme(theme string) bool {
+	for _, item := range profileThemes {
+		if item.Key == theme {
+			return true
+		}
+	}
+	return false
+}
+func validBadge(badge string) bool {
+	for _, item := range profileBadges {
+		if item.Key == badge {
+			return true
+		}
+	}
+	return false
+}
+func profileSelectOptions(items []struct{ Key, Label string }, selected string) string {
+	var b strings.Builder
+	for _, item := range items {
+		mark := ""
+		if item.Key == selected {
+			mark = " selected"
+		}
+		b.WriteString(`<option value="` + template.HTMLEscapeString(item.Key) + `"` + mark + `>` + template.HTMLEscapeString(item.Label) + `</option>`)
+	}
+	return b.String()
+}
+func badgeHTML(badge string) string {
+	for _, item := range profileBadges {
+		if item.Key == badge && item.Key != "" {
+			return `<span class="profile-badge">` + template.HTMLEscapeString(item.Label) + `</span>`
+		}
+	}
+	return ""
+}
+func layout(title, body string) string { return layoutWithTheme(title, body, "ocean") }
+func layoutWithTheme(title, body, theme string) string {
+	if !validTheme(theme) {
+		theme = "ocean"
+	}
+	doc := `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#061722"><title>{{TITLE}} · Gamer Community</title><link rel="icon" type="image/png" href="/assets/icon.png"><link rel="stylesheet" href="/assets/lite-social.css"></head><body class="theme-{{THEME}}">{{BODY}}</body></html>`
+	return strings.NewReplacer("{{TITLE}}", template.HTMLEscapeString(title), "{{THEME}}", theme, "{{BODY}}", body).Replace(doc)
 }
 
 type leaderboardEntry struct {
@@ -298,7 +345,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 	mu.Unlock()
 	sort.Slice(posts, func(i, j int) bool { return posts[i].At.After(posts[j].At) })
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf(`<header class="community-header"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"><details class="profile"><summary aria-label="Mi perfil"><span class="profile-trigger">%s</span></summary><section class="profile-menu"><div class="profile-heading">%s<div><strong>%s</strong><small>Mi perfil</small></div></div><a class="profile-link" href="%s">Ver mi perfil público</a><form method="post" action="/profile"><label>Juego que juegas<input name="game" value="%s" maxlength="80" placeholder="Ej. Dota 2"></label><label>Sobre mí<textarea name="bio" maxlength="240" placeholder="Una breve presentación para la comunidad">%s</textarea></label><button class="btn profile-save">Guardar perfil</button></form><form class="photo-form" method="post" action="/profile/photo" enctype="multipart/form-data"><label>Foto de perfil<input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required></label><button class="btn profile-save">Cambiar foto</button></form><a class="profile-link" href="/logout">Cerrar sesión</a></section></details></header><div class="community-layout"><aside class="leaderboard-panel" aria-labelledby="leaderboard-title"><div class="leaderboard-heading"><span class="leaderboard-kicker">CLASIFICACIÓN</span><h2 id="leaderboard-title">Top de victorias</h2><p>Los jugadores con más triunfos</p></div><ol class="leaderboard-list">`, avatarHTML(u, prof.Photo, "avatar"), avatarHTML(u, prof.Photo, "avatar"), template.HTMLEscapeString(u), profileURL(u), template.HTMLEscapeString(prof.Game), template.HTMLEscapeString(prof.Bio)))
+	b.WriteString(fmt.Sprintf(`<header class="community-header"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"><details class="profile"><summary aria-label="Mi perfil"><span class="profile-trigger">%s</span></summary><section class="profile-menu"><div class="profile-heading">%s<div><strong>%s</strong><small>Mi perfil</small></div></div><a class="profile-link" href="%s">Ver mi perfil público</a><form method="post" action="/profile"><label>Juego que juegas<input name="game" value="%s" maxlength="80" placeholder="Ej. Dota 2"></label><label>Sobre mí<textarea name="bio" maxlength="240" placeholder="Una breve presentación para la comunidad">%s</textarea></label><label>Color de mi comunidad<select name="theme">%s</select></label><label>Insignia decorativa<select name="badge">%s</select></label><button class="btn profile-save">Guardar perfil</button></form><form class="photo-form" method="post" action="/profile/photo" enctype="multipart/form-data"><label>Foto de perfil<input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required></label><button class="btn profile-save">Cambiar foto</button></form><form class="photo-form" method="post" action="/profile/cover" enctype="multipart/form-data"><label>Portada del perfil<input type="file" name="cover" accept="image/png,image/jpeg,image/webp" required></label><button class="btn profile-save">Cambiar portada</button></form><a class="profile-link" href="/logout">Cerrar sesión</a></section></details></header><div class="community-layout"><aside class="leaderboard-panel" aria-labelledby="leaderboard-title"><div class="leaderboard-heading"><span class="leaderboard-kicker">CLASIFICACIÓN</span><h2 id="leaderboard-title">Top de victorias</h2><p>Los jugadores con más triunfos</p></div><ol class="leaderboard-list">`, avatarHTML(u, prof.Photo, "avatar"), avatarHTML(u, prof.Photo, "avatar"), template.HTMLEscapeString(u), profileURL(u), template.HTMLEscapeString(prof.Game), template.HTMLEscapeString(prof.Bio), profileSelectOptions(profileThemes, prof.Theme), profileSelectOptions(profileBadges, prof.Badge)))
 	if len(ranking) == 0 {
 		b.WriteString(`<li class="leaderboard-empty">Aún no hay victorias registradas.</li>`)
 	} else {
@@ -342,7 +389,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`</div><form class="comment-form" method="post" action="/comment"><input type="hidden" name="id" value="` + template.HTMLEscapeString(p.ID) + `"><input name="text" maxlength="2000" required placeholder="Escribe un comentario…"><button class="btn comment-button">Comentar</button></form></div></article>`)
 	}
 	b.WriteString(`</main></div><dialog id="edit-dialog"><form method="post" action="/edit" enctype="multipart/form-data"><h2>Editar publicación</h2><input type="hidden" name="id"><label>Texto<textarea name="caption" maxlength="2000"></textarea></label><label>Reemplazar video o imagen (opcional)<input type="file" name="file" accept="image/*,video/mp4,video/webm,video/ogg,.mp4,.m4v,.webm,.ogv,.ogg,.mov"></label><div class="dialog-actions"><button type="button" class="btn dialog-cancel">Cancelar</button><button class="btn">Guardar cambios</button></div></form></dialog><footer class="feed-footer">Gamer Community · Tu nexo de juego local</footer><script src="/assets/app.js" defer></script>`)
-	fmt.Fprint(w, layout("Gamer Community", b.String()))
+	fmt.Fprint(w, layoutWithTheme("Gamer Community", b.String(), prof.Theme))
 }
 func avatarHTML(u, photo, cls string) string {
 	if photo != "" {
@@ -424,7 +471,11 @@ func viewProfile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var b strings.Builder
-	b.WriteString(`<header class="community-header"><a href="/"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"></a></header><main class="public-profile-page"><a class="back-to-feed" href="/">← Volver a la comunidad</a><section class="public-profile-card"><div class="public-profile-main">` + avatarHTML(name, profile.Photo, "avatar public-profile-avatar") + `<div class="public-profile-identity"><span class="profile-eyebrow">PERFIL DE LA COMUNIDAD</span><h1>` + template.HTMLEscapeString(name) + `</h1><p class="profile-game">`)
+	b.WriteString(`<header class="community-header"><a href="/"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"></a></header><main class="public-profile-page"><a class="back-to-feed" href="/">← Volver a la comunidad</a><section class="public-profile-card">`)
+	if profile.Cover != "" {
+		b.WriteString(`<div class="profile-cover"><img src="/media/` + url.PathEscape(profile.Cover) + `" alt="Portada de ` + template.HTMLEscapeString(name) + `"></div>`)
+	}
+	b.WriteString(`<div class="public-profile-main">` + avatarHTML(name, profile.Photo, "avatar public-profile-avatar") + `<div class="public-profile-identity"><span class="profile-eyebrow">PERFIL DE LA COMUNIDAD</span><div class="profile-name-line"><h1>` + template.HTMLEscapeString(name) + `</h1>` + badgeHTML(profile.Badge) + `</div><p class="profile-game">`)
 	if profile.Game != "" {
 		b.WriteString(`<span class="game-tag">` + template.HTMLEscapeString(profile.Game) + `</span>`)
 	} else {
@@ -473,7 +524,7 @@ func viewProfile(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`<footer class="profile-post-footer"><span>♥ ` + fmt.Sprint(reactionTotal) + ` reacciones</span><span>` + fmt.Sprint(len(post.Comments)) + ` comentarios</span></footer></article>`)
 	}
 	b.WriteString(`<footer class="feed-footer">Gamer Community · Tu nexo de juego local</footer></main>`)
-	fmt.Fprint(w, layout("Perfil de "+name, b.String()))
+	fmt.Fprint(w, layoutWithTheme("Perfil de "+name, b.String(), profile.Theme))
 }
 
 func auth(w http.ResponseWriter, mode, msg string) {
@@ -665,8 +716,17 @@ func profile(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = r.ParseForm()
 	bio := strings.TrimSpace(r.FormValue("bio"))
+	theme := strings.TrimSpace(r.FormValue("theme"))
+	if theme == "" {
+		theme = "ocean"
+	}
+	badge := strings.TrimSpace(r.FormValue("badge"))
 	if len([]rune(bio)) > 240 {
 		http.Error(w, "La presentación no puede superar 240 caracteres", http.StatusBadRequest)
+		return
+	}
+	if !validTheme(theme) || !validBadge(badge) {
+		http.Error(w, "Tema o insignia no válidos", http.StatusBadRequest)
 		return
 	}
 	mu.Lock()
@@ -674,6 +734,8 @@ func profile(w http.ResponseWriter, r *http.Request) {
 	original := p
 	p.Game = strings.TrimSpace(r.FormValue("game"))
 	p.Bio = bio
+	p.Theme = theme
+	p.Badge = badge
 	state.Profiles[u] = p
 	ok := save()
 	if !ok {
@@ -686,7 +748,10 @@ func profile(w http.ResponseWriter, r *http.Request) {
 	}
 	redirect(w, r, "/")
 }
-func profilePhoto(w http.ResponseWriter, r *http.Request) {
+func profilePhoto(w http.ResponseWriter, r *http.Request) { saveProfileImage(w, r, "photo") }
+func profileCover(w http.ResponseWriter, r *http.Request) { saveProfileImage(w, r, "cover") }
+
+func saveProfileImage(w http.ResponseWriter, r *http.Request, field string) {
 	u := user(r)
 	if u == "" {
 		http.Error(w, "No autorizado", 401)
@@ -700,7 +765,7 @@ func profilePhoto(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Imagen demasiado grande", 413)
 		return
 	}
-	f, h, e := r.FormFile("photo")
+	f, h, e := r.FormFile(field)
 	if e != nil {
 		http.Error(w, "Selecciona una imagen", 400)
 		return
@@ -720,7 +785,12 @@ func profilePhoto(w http.ResponseWriter, r *http.Request) {
 	p := state.Profiles[u]
 	original := p
 	old := p.Photo
-	p.Photo = id
+	if field == "cover" {
+		old = p.Cover
+		p.Cover = id
+	} else {
+		p.Photo = id
+	}
 	state.Profiles[u] = p
 	ok := save()
 	if !ok {
@@ -747,7 +817,7 @@ func isReferenced(file string) bool {
 		}
 	}
 	for _, p := range state.Profiles {
-		if p.Photo == file {
+		if p.Photo == file || p.Cover == file {
 			return true
 		}
 	}

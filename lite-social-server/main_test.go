@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -171,7 +173,7 @@ func TestAdminConsoleLinkIsNotShownInProfile(t *testing.T) {
 
 func TestPublicProfileShowsIdentityPostsAndRanking(t *testing.T) {
 	setupAuth(t, map[string]string{"viewer": hash("pw"), "alice": hash("pw")}, []byte("01234567890123456789012345678901"))
-	state.Profiles["alice"] = Profile{Game: "Valorant", Bio: "Juego con la comunidad"}
+	state.Profiles["alice"] = Profile{Game: "Valorant", Bio: "Juego con la comunidad", Theme: "violet", Badge: "creator", Cover: "cover.png"}
 	state.Posts["alice-post"] = Post{ID: "alice-post", File: "match.png", Caption: "¡GG equipo!", Author: "alice", At: time.Now(), Reactions: map[string]int{"gg": 4}, Comments: []Comment{{User: "viewer", Text: "Bien jugado"}}}
 	state.Wins["alice"] = VictoryRecord{Name: "Alice", Wins: 12}
 	r := httptest.NewRequest(http.MethodGet, "/user?name=alice", nil)
@@ -181,10 +183,59 @@ func TestPublicProfileShowsIdentityPostsAndRanking(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("profile status=%d, body=%s", w.Code, w.Body.String())
 	}
-	for _, want := range []string{"Juego con la comunidad", "Valorant", "¡GG equipo!", "#1", "12 victorias", "4", "1 comentarios"} {
+	for _, want := range []string{"Juego con la comunidad", "Valorant", "¡GG equipo!", "#1", "12 victorias", "4", "1 comentarios", `class="theme-violet"`, "🎬 Creador", `class="profile-cover"`, "/media/cover.png"} {
 		if !strings.Contains(w.Body.String(), want) {
 			t.Errorf("profile missing %q", want)
 		}
+	}
+}
+
+func TestProfileSettingsSaveThemeAndBadge(t *testing.T) {
+	setupAuth(t, map[string]string{"gamer": hash("pw")}, []byte("01234567890123456789012345678901"))
+	form := url.Values{"game": {"Hades II"}, "bio": {"Roguelikes y coop"}, "theme": {"ember"}, "badge": {"strategist"}}
+	r := httptest.NewRequest(http.MethodPost, "/profile", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("gamer")})
+	w := httptest.NewRecorder()
+	profile(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("profile update status=%d body=%s", w.Code, w.Body.String())
+	}
+	got := state.Profiles["gamer"]
+	if got.Game != "Hades II" || got.Bio != "Roguelikes y coop" || got.Theme != "ember" || got.Badge != "strategist" {
+		t.Fatalf("profile settings not saved: %#v", got)
+	}
+}
+
+func TestProfileCoverUploadPersistsImage(t *testing.T) {
+	setupAuth(t, map[string]string{"gamer": hash("pw")}, []byte("01234567890123456789012345678901"))
+	image, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/eE8AAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile("cover", "gamer-cover.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(image); err != nil {
+		t.Fatal(err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/profile/cover", &body)
+	r.Header.Set("Content-Type", mw.FormDataContentType())
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("gamer")})
+	w := httptest.NewRecorder()
+	profileCover(w, r)
+	cover := state.Profiles["gamer"].Cover
+	if w.Code != http.StatusSeeOther || cover == "" {
+		t.Fatalf("cover upload status=%d profile=%#v body=%s", w.Code, state.Profiles["gamer"], w.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(filesDir, cover)); err != nil {
+		t.Fatalf("saved cover is missing: %v", err)
 	}
 }
 

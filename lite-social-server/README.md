@@ -32,6 +32,8 @@ En `/admin`, escribe el nombre o alias y la cantidad de victorias para agregar u
 
 El feed enlaza los nombres y avatares con perfiles públicos que muestran foto, juego, presentación, estadísticas de participación, publicaciones y puesto en victorias cuando corresponde. La biografía se edita desde el menú del perfil. Las reacciones y comentarios se publican sin recargar el feed; las tarjetas usan fechas relativas para que la actividad reciente sea fácil de reconocer.
 
+Cada persona puede elegir entre cinco temas de color, una insignia decorativa y subir una portada PNG, JPG o WebP de hasta 5 MiB. Las insignias son etiquetas visuales elegidas por el usuario, no verificaciones oficiales. Los archivos y preferencias se guardan con el perfil y los campos nuevos son opcionales para las cuentas existentes.
+
 ## Distribución Windows x64
 
 En Windows, desde esta carpeta, se puede generar el ejecutable portable, el ZIP y el instalador NSIS así:
