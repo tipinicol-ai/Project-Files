@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -42,16 +43,23 @@ type Profile struct {
 	Game  string
 	Photo string
 }
+type VictoryRecord struct {
+	Name      string
+	Wins      int
+	UpdatedBy string
+	UpdatedAt time.Time
+}
 type State struct {
 	Users    map[string]string
 	Posts    map[string]Post
 	Profiles map[string]Profile
+	Wins     map[string]VictoryRecord
 }
 
 var mu sync.Mutex
 var dataDir, filesDir, publicURL, adminUser string
 var sessionKey []byte
-var state = State{Users: map[string]string{}, Posts: map[string]Post{}, Profiles: map[string]Profile{}}
+var state = State{Users: map[string]string{}, Posts: map[string]Post{}, Profiles: map[string]Profile{}, Wins: map[string]VictoryRecord{}}
 var reactions = []struct{ Key, Emoji, Label string }{{"fire", "🔥", "FUEGO"}, {"crit", "⚡", "CRIT"}, {"gg", "👍", "GG"}, {"heart", "❤️", "LOVE"}, {"lol", "😂", "LOL"}, {"wow", "😮", "WOW"}, {"ko", "😡", "KO"}}
 
 const maxMediaSize int64 = 500 << 20
@@ -81,6 +89,7 @@ func main() {
 	http.HandleFunc("/admin", admin)
 	http.HandleFunc("/admin/activity", adminActivity)
 	http.HandleFunc("/admin/delete", adminDelete)
+	http.HandleFunc("/admin/wins", adminWins)
 	http.HandleFunc("/profile", profile)
 	http.HandleFunc("/profile/photo", profilePhoto)
 	http.HandleFunc("/delete", deletePost)
@@ -144,6 +153,9 @@ func load() {
 	}
 	if state.Profiles == nil {
 		state.Profiles = map[string]Profile{}
+	}
+	if state.Wins == nil {
+		state.Wins = map[string]VictoryRecord{}
 	}
 }
 func save() bool {
@@ -229,6 +241,37 @@ func layout(title, body string) string {
 	return strings.NewReplacer("{{TITLE}}", template.HTMLEscapeString(title), "{{BODY}}", body).Replace(doc)
 }
 
+type leaderboardEntry struct {
+	User      string    `json:"user"`
+	Wins      int       `json:"wins"`
+	UpdatedBy string    `json:"updatedBy,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
+}
+
+func leaderboardLocked() []leaderboardEntry {
+	return rankedWinsLocked(false)
+}
+
+func rankedWinsLocked(includeZero bool) []leaderboardEntry {
+	entries := make([]leaderboardEntry, 0, len(state.Wins))
+	for name, record := range state.Wins {
+		if record.Wins > 0 || includeZero {
+			shownName := record.Name
+			if shownName == "" {
+				shownName = name
+			}
+			entries = append(entries, leaderboardEntry{User: shownName, Wins: record.Wins, UpdatedBy: record.UpdatedBy, UpdatedAt: record.UpdatedAt})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Wins == entries[j].Wins {
+			return strings.ToLower(entries[i].User) < strings.ToLower(entries[j].User)
+		}
+		return entries[i].Wins > entries[j].Wins
+	})
+	return entries
+}
+
 func home(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -248,12 +291,20 @@ func home(w http.ResponseWriter, r *http.Request) {
 	for name, pr := range state.Profiles {
 		profiles[name] = pr
 	}
+	ranking := leaderboardLocked()
 	prof := profiles[u]
 	mu.Unlock()
 	sort.Slice(posts, func(i, j int) bool { return posts[i].At.After(posts[j].At) })
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf(`<header class="community-header"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"><details class="profile"><summary aria-label="Mi perfil"><span class="profile-trigger">%s</span></summary><section class="profile-menu"><div class="profile-heading">%s<div><strong>%s</strong><small>Mi perfil</small></div></div><form method="post" action="/profile"><label>Juego que juegas<input name="game" value="%s" maxlength="80" placeholder="Ej. Dota 2"></label><button class="btn profile-save">Guardar perfil</button></form><form class="photo-form" method="post" action="/profile/photo" enctype="multipart/form-data"><label>Foto de perfil<input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required></label><button class="btn profile-save">Cambiar foto</button></form>%s<a class="profile-link" href="/logout">Cerrar sesión</a></section></details></header>`, avatarHTML(u, prof.Photo, "avatar"), avatarHTML(u, prof.Photo, "avatar"), template.HTMLEscapeString(u), template.HTMLEscapeString(prof.Game), adminLink(u)))
-	b.WriteString(`<main class="feed"><section class="composer neon-frame"><div class="avatar composer-avatar">` + avatarHTML(u, prof.Photo, "avatar-inner") + `</div><form action="/upload" method="post" enctype="multipart/form-data"><input name="caption" placeholder="¿Qué estás pensando hoy?" maxlength="2000" aria-label="Texto de la publicación"><label class="media-button"><span>＋ Añadir foto / vídeo</span><input type="file" name="file" accept="image/*,video/mp4,video/webm,video/ogg,.mp4,.m4v,.webm,.ogv,.ogg,.mov,.pdf,.zip" required></label><button class="btn publish-button">Publicar</button></form></section><section class="feed-tools"><label class="sr-only" for="post-search">Buscar publicaciones</label><input id="post-search" type="search" placeholder="Buscar publicaciones o autores…"><select id="post-filter" aria-label="Filtrar publicaciones"><option value="all">Todas</option><option value="video">Videos</option><option value="image">Imágenes</option></select></section><p class="empty-state" id="empty-state" hidden>No hay publicaciones que coincidan. ¡Sé el primero en compartir algo!</p>`)
+	b.WriteString(fmt.Sprintf(`<header class="community-header"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"><details class="profile"><summary aria-label="Mi perfil"><span class="profile-trigger">%s</span></summary><section class="profile-menu"><div class="profile-heading">%s<div><strong>%s</strong><small>Mi perfil</small></div></div><form method="post" action="/profile"><label>Juego que juegas<input name="game" value="%s" maxlength="80" placeholder="Ej. Dota 2"></label><button class="btn profile-save">Guardar perfil</button></form><form class="photo-form" method="post" action="/profile/photo" enctype="multipart/form-data"><label>Foto de perfil<input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required></label><button class="btn profile-save">Cambiar foto</button></form><a class="profile-link" href="/logout">Cerrar sesión</a></section></details></header><div class="community-layout"><aside class="leaderboard-panel" aria-labelledby="leaderboard-title"><div class="leaderboard-heading"><span class="leaderboard-kicker">CLASIFICACIÓN</span><h2 id="leaderboard-title">Top de victorias</h2><p>Los jugadores con más triunfos</p></div><ol class="leaderboard-list">`, avatarHTML(u, prof.Photo, "avatar"), avatarHTML(u, prof.Photo, "avatar"), template.HTMLEscapeString(u), template.HTMLEscapeString(prof.Game)))
+	if len(ranking) == 0 {
+		b.WriteString(`<li class="leaderboard-empty">Aún no hay victorias registradas.</li>`)
+	} else {
+		for i, entry := range ranking {
+			b.WriteString(fmt.Sprintf(`<li class="leaderboard-entry%s"><span class="leaderboard-rank">%02d</span><span class="leaderboard-player"><strong>%s</strong><small>%s</small></span><span class="leaderboard-wins"><b>%d</b><small>victorias</small></span></li>`, map[bool]string{true: " is-champion", false: ""}[i == 0], i+1, template.HTMLEscapeString(entry.User), map[bool]string{true: "Líder actual", false: "En el ranking"}[i == 0], entry.Wins))
+		}
+	}
+	b.WriteString(`</ol><p class="leaderboard-note">Actualizado por la administración</p></aside><main class="feed"><section class="composer neon-frame"><div class="avatar composer-avatar">` + avatarHTML(u, prof.Photo, "avatar-inner") + `</div><form action="/upload" method="post" enctype="multipart/form-data"><input name="caption" placeholder="¿Qué estás pensando hoy?" maxlength="2000" aria-label="Texto de la publicación"><label class="media-button"><span>＋ Añadir foto / vídeo</span><input type="file" name="file" accept="image/*,video/mp4,video/webm,video/ogg,.mp4,.m4v,.webm,.ogv,.ogg,.mov,.pdf,.zip" required></label><button class="btn publish-button">Publicar</button></form></section><section class="feed-tools"><label class="sr-only" for="post-search">Buscar publicaciones</label><input id="post-search" type="search" placeholder="Buscar publicaciones o autores…"><select id="post-filter" aria-label="Filtrar publicaciones"><option value="all">Todas</option><option value="video">Videos</option><option value="image">Imágenes</option></select></section><p class="empty-state" id="empty-state" hidden>No hay publicaciones que coincidan. ¡Sé el primero en compartir algo!</p>`)
 	for _, p := range posts {
 		fileURL := "/media/" + url.PathEscape(p.File)
 		ext := strings.ToLower(filepath.Ext(p.File))
@@ -288,7 +339,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`</div><form class="comment-form" method="post" action="/comment"><input type="hidden" name="id" value="` + template.HTMLEscapeString(p.ID) + `"><input name="text" maxlength="2000" required placeholder="Escribe un comentario…"><button class="btn comment-button">Comentar</button></form></div></article>`)
 	}
-	b.WriteString(`</main><dialog id="edit-dialog"><form method="post" action="/edit" enctype="multipart/form-data"><h2>Editar publicación</h2><input type="hidden" name="id"><label>Texto<textarea name="caption" maxlength="2000"></textarea></label><label>Reemplazar video o imagen (opcional)<input type="file" name="file" accept="image/*,video/mp4,video/webm,video/ogg,.mp4,.m4v,.webm,.ogv,.ogg,.mov"></label><div class="dialog-actions"><button type="button" class="btn dialog-cancel">Cancelar</button><button class="btn">Guardar cambios</button></div></form></dialog><footer class="feed-footer">Gamer Community · Tu nexo de juego local</footer><script src="/assets/app.js" defer></script>`)
+	b.WriteString(`</main></div><dialog id="edit-dialog"><form method="post" action="/edit" enctype="multipart/form-data"><h2>Editar publicación</h2><input type="hidden" name="id"><label>Texto<textarea name="caption" maxlength="2000"></textarea></label><label>Reemplazar video o imagen (opcional)<input type="file" name="file" accept="image/*,video/mp4,video/webm,video/ogg,.mp4,.m4v,.webm,.ogv,.ogg,.mov"></label><div class="dialog-actions"><button type="button" class="btn dialog-cancel">Cancelar</button><button class="btn">Guardar cambios</button></div></form></dialog><footer class="feed-footer">Gamer Community · Tu nexo de juego local</footer><script src="/assets/app.js" defer></script>`)
 	fmt.Fprint(w, layout("Gamer Community", b.String()))
 }
 func avatarHTML(u, photo, cls string) string {
@@ -296,12 +347,6 @@ func avatarHTML(u, photo, cls string) string {
 		return `<img class="` + cls + `" src="/media/` + url.PathEscape(photo) + `" alt="Foto de ` + template.HTMLEscapeString(u) + `">`
 	}
 	return `<span class="` + cls + ` avatar-fallback">` + template.HTMLEscapeString(strings.ToUpper(firstRune(u))) + `</span>`
-}
-func adminLink(u string) string {
-	if isAdmin(u) {
-		return `<a class="profile-link" href="/admin">Consola de administración</a>`
-	}
-	return ""
 }
 func firstRune(s string) string {
 	r := []rune(s)
@@ -799,7 +844,7 @@ func admin(w http.ResponseWriter, r *http.Request) {
 	mu.Lock()
 	postCount, userCount := len(state.Posts), len(state.Users)
 	mu.Unlock()
-	body := fmt.Sprintf(`<header class="admin-header"><a href="/"><img src="/assets/community-banner.webp" alt="Gamer Community"></a></header><main class="feed admin-page"><section class="post admin-card"><h1>Consola de administración</h1><p>Servidor social Project Files Social Server Lite</p><p class="url">%s</p><p>Publicaciones: <strong>%d</strong> · Usuarios: <strong>%d</strong></p><h2>Actividad reciente</h2><label class="admin-search-label">Buscar autor o texto<input id="admin-search" type="search" placeholder="Buscar en las últimas publicaciones…"></label><div class="admin-posts" id="admin-posts">Cargando actividad…</div><h2>Usuarios registrados</h2><div class="admin-users" id="admin-users"></div><a class="profile-link" href="/">Volver a la comunidad</a></section></main><script src="/assets/admin.js" defer></script>`, template.HTMLEscapeString(publicURL), postCount, userCount)
+	body := fmt.Sprintf(`<header class="admin-header"><a href="/"><img src="/assets/community-banner.webp" alt="Gamer Community"></a></header><main class="feed admin-page"><section class="post admin-card"><h1>Consola de administración</h1><p>Servidor social Project Files Social Server Lite</p><p class="url">%s</p><p>Publicaciones: <strong>%d</strong> · Usuarios: <strong>%d</strong></p><h2>Top de victorias</h2><p>Escribe cualquier nombre o alias y su número de victorias. No hace falta que tenga una cuenta; estos datos son los que aparecerán en la web.</p><form class="admin-win-create" method="post" action="/admin/wins"><label>Nombre del jugador<input name="name" maxlength="60" placeholder="Ej. ProGamer" required></label><label>Victorias<input type="number" name="wins" min="0" max="1000000" step="1" value="0" required></label><button class="btn">Agregar al ranking</button></form><div class="admin-wins" id="admin-wins">Cargando jugadores…</div><h2>Actividad reciente</h2><label class="admin-search-label">Buscar autor o texto<input id="admin-search" type="search" placeholder="Buscar en las últimas publicaciones…"></label><div class="admin-posts" id="admin-posts">Cargando actividad…</div><h2>Usuarios registrados</h2><div class="admin-users" id="admin-users"></div><a class="profile-link" href="/">Volver a la comunidad</a></section></main><script src="/assets/admin.js" defer></script>`, template.HTMLEscapeString(publicURL), postCount, userCount)
 	fmt.Fprint(w, layout("Administración", body))
 }
 func adminActivity(w http.ResponseWriter, r *http.Request) {
@@ -815,6 +860,7 @@ func adminActivity(w http.ResponseWriter, r *http.Request) {
 	for u := range state.Users {
 		users = append(users, u)
 	}
+	ranking := rankedWinsLocked(true)
 	mu.Unlock()
 	sort.Slice(posts, func(i, j int) bool { return posts[i].At.After(posts[j].At) })
 	if len(posts) > 20 {
@@ -822,7 +868,7 @@ func adminActivity(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(users)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]interface{}{"posts": posts, "users": users})
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"posts": posts, "users": users, "wins": ranking})
 }
 func adminDelete(w http.ResponseWriter, r *http.Request) {
 	if !adminAuth(w, r) {
@@ -845,5 +891,63 @@ func adminDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	mu.Unlock()
+	redirect(w, r, "/admin")
+}
+
+func adminWins(w http.ResponseWriter, r *http.Request) {
+	if !adminAuth(w, r) {
+		return
+	}
+	actor := user(r)
+	if !method(w, r, http.MethodPost) {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Formulario inválido", http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(r.FormValue("name"))
+	key := strings.ToLower(name)
+	oldKey := strings.ToLower(strings.TrimSpace(r.FormValue("oldName")))
+	if name == "" || len([]rune(name)) > 60 {
+		http.Error(w, "El nombre debe tener entre 1 y 60 caracteres", http.StatusBadRequest)
+		return
+	}
+	wins, err := strconv.Atoi(r.FormValue("wins"))
+	if err != nil || wins < 0 || wins > 1000000 {
+		http.Error(w, "Las victorias deben ser un número entre 0 y 1.000.000", http.StatusBadRequest)
+		return
+	}
+	mu.Lock()
+	if oldKey != "" && oldKey != key {
+		if _, exists := state.Wins[oldKey]; !exists {
+			mu.Unlock()
+			http.Error(w, "No se encontró el jugador que quieres editar", http.StatusBadRequest)
+			return
+		}
+		if _, exists := state.Wins[key]; exists {
+			mu.Unlock()
+			http.Error(w, "Ya existe un jugador con ese nombre", http.StatusBadRequest)
+			return
+		}
+	}
+	previousWins := make(map[string]VictoryRecord, len(state.Wins))
+	for savedName, record := range state.Wins {
+		previousWins[savedName] = record
+	}
+	if oldKey != "" && oldKey != key {
+		delete(state.Wins, oldKey)
+	}
+	state.Wins[key] = VictoryRecord{Name: name, Wins: wins, UpdatedBy: actor, UpdatedAt: time.Now()}
+	saved := save()
+	if !saved {
+		state.Wins = previousWins
+	}
+	mu.Unlock()
+	if !saved {
+		http.Error(w, "No se pudieron guardar las victorias", http.StatusInternalServerError)
+		return
+	}
 	redirect(w, r, "/admin")
 }

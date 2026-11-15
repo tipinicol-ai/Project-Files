@@ -24,6 +24,10 @@ $env:PROJECT_FILES_ADMIN_USER = "tu_usuario"
 
 Solo esa cuenta firmada podrá consultar la consola y realizar moderación. No hay contraseña pública ni promoción automática al registrarse. La aplicación crea una clave de sesión aleatoria en la carpeta privada de configuración; las cookies se validan mediante HMAC. Mantén esa carpeta y el acceso al equipo protegidos. Los cambios de datos existentes son compatibles; las sesiones antiguas sin firma deberán iniciar sesión otra vez.
 
+### Top de victorias
+
+En `/admin`, escribe el nombre o alias y la cantidad de victorias para agregar una entrada. Luego puedes editar el nombre y el número directamente en su fila. Los jugadores del ranking no necesitan tener una cuenta. La comunidad muestra las entradas ordenadas de mayor a menor; el registro conserva qué cuenta administradora guardó el último cambio y la fecha. El acceso a la consola no aparece en el menú de perfil.
+
 ## Distribución Windows x64
 
 En Windows, desde esta carpeta, se puede generar el ejecutable portable, el ZIP y el instalador NSIS así:

@@ -202,3 +202,77 @@ button:disabled { opacity: .6; cursor: wait; }
 .admin-search-label input { display: block; width: 100%; margin-top: 6px; padding: 9px 11px; border: 1px solid rgba(92,166,196,.4); border-radius: 8px; background: #071827; color: #eef8ff; }
 
 .comments-count { margin: 7px 0 3px; color: #9eb9c9; font-size: 11px; font-weight: 700; }
+
+
+/* Marcador comunitario y consola de victorias */
+.community-layout { display: grid; grid-template-columns: minmax(220px, 272px) minmax(0, 680px); gap: 16px; align-items: start; width: min(1000px, calc(100% - 28px)); margin: 0 auto; }
+.community-layout .feed { width: 100%; margin: 0; }
+.leaderboard-panel { position: sticky; top: 14px; overflow: hidden; border: 1px solid rgba(72, 216, 247, .38); border-radius: 15px; background: linear-gradient(155deg, rgba(14, 39, 58, .98), rgba(6, 20, 32, .98)); box-shadow: 0 13px 34px rgba(0,0,0,.3), inset 0 1px rgba(255,255,255,.035); }
+.leaderboard-heading { padding: 17px 17px 13px; border-bottom: 1px solid rgba(112, 193, 226, .17); background: radial-gradient(ellipse at 100% 0, rgba(255, 173, 77, .12), transparent 58%); }
+.leaderboard-kicker { color: #7be4f5; font-size: 9px; font-weight: 900; letter-spacing: .18em; }
+.leaderboard-heading h2 { margin: 5px 0 3px; color: #f2f8ff; font-size: 19px; letter-spacing: -.02em; }
+.leaderboard-heading p { margin: 0; color: #94aec0; font-size: 11px; }
+.leaderboard-list { display: grid; gap: 7px; margin: 0; padding: 11px; list-style: none; }
+.leaderboard-entry { display: grid; grid-template-columns: 27px minmax(0,1fr) auto; align-items: center; gap: 9px; min-width: 0; padding: 10px 9px; border: 1px solid rgba(115, 157, 178, .14); border-radius: 10px; background: rgba(5, 21, 33, .67); transition: border-color .15s, transform .15s, background .15s; }
+.leaderboard-entry:hover { transform: translateY(-1px); border-color: rgba(79, 215, 244, .42); background: rgba(13, 43, 62, .88); }
+.leaderboard-entry.is-champion { border-color: rgba(255, 190, 94, .52); background: linear-gradient(105deg, rgba(116, 74, 24, .28), rgba(11, 37, 53, .9)); }
+.leaderboard-rank { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 8px; background: #0c2b40; color: #a8dff0; font-size: 10px; font-weight: 900; }
+.is-champion .leaderboard-rank { background: linear-gradient(135deg, #ffd979, #ee8e42); color: #281b09; }
+.leaderboard-player { display: grid; min-width: 0; gap: 3px; }
+.leaderboard-player strong { overflow: hidden; color: #f0f7ff; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.leaderboard-player small { color: #849daf; font-size: 9px; }
+.leaderboard-wins { display: grid; justify-items: end; gap: 2px; }
+.leaderboard-wins b { color: #71e1f7; font-size: 15px; line-height: 1; }
+.is-champion .leaderboard-wins b { color: #ffc56a; }
+.leaderboard-wins small { color: #91a9b8; font-size: 9px; }
+.leaderboard-empty { padding: 15px 9px; color: #a7bdca; font-size: 12px; line-height: 1.5; text-align: center; }
+.leaderboard-note { margin: 0; padding: 0 15px 13px; color: #6e899a; font-size: 9px; text-align: center; }
+.admin-wins { display: grid; gap: 7px; margin: 10px 0 18px; }
+.admin-win-row { display: grid; grid-template-columns: 35px minmax(0,1fr) minmax(170px,230px); gap: 8px 10px; align-items: center; padding: 10px 12px; border: 1px solid #29485d; border-radius: 8px; background: #071827; }
+.admin-win-leader { border-color: rgba(255,190,94,.45); background: linear-gradient(100deg, rgba(100,66,28,.2), #071827 75%); }
+.admin-win-place { color: #73deef; font-size: 11px; font-weight: 900; }
+.admin-win-identity { display: grid; min-width: 0; gap: 4px; }
+.admin-win-identity strong { overflow: hidden; color: #eff8ff; text-overflow: ellipsis; white-space: nowrap; }
+.admin-win-row small { color: #8da7b8; font-size: 10px; line-height: 1.35; }
+.admin-win-form { display: grid; grid-template-columns: minmax(65px,1fr) auto; gap: 6px; }
+.admin-win-form input { min-width: 0; width: 100%; padding: 8px 9px; border: 1px solid rgba(92,166,196,.45); border-radius: 7px; background: #0a2030; color: #ffc56a; font-weight: 800; }
+.admin-win-form .btn { padding: 7px 10px; font-size: 11px; }
+@media (max-width: 850px) {
+  .community-layout { grid-template-columns: minmax(0, 1fr); width: min(680px, calc(100% - 24px)); gap: 11px; }
+  .leaderboard-panel { position: static; }
+  .leaderboard-list { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .community-layout .feed { width: 100%; }
+}
+@media (max-width: 600px) {
+  .community-layout { width: calc(100% - 16px); }
+  .leaderboard-heading { padding: 14px 14px 10px; }
+  .leaderboard-heading h2 { font-size: 17px; }
+  .leaderboard-list { grid-template-columns: 1fr; padding: 8px; }
+  .admin-win-row { grid-template-columns: 28px minmax(0,1fr); gap: 8px; padding: 10px; }
+  .admin-win-form { grid-column: 2; grid-template-columns: minmax(65px,1fr) auto; }
+}
+
+.admin-win-create { display: grid; grid-template-columns: minmax(0,1fr) 135px auto; gap: 9px; align-items: end; margin: 12px 0; padding: 13px; border: 1px solid rgba(72,216,247,.32); border-radius: 10px; background: linear-gradient(120deg, rgba(10,38,55,.92), #071827); }
+.admin-win-create label { display: grid; gap: 6px; color: #adc5d4; font-size: 12px; }
+.admin-win-create input { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid rgba(92,166,196,.45); border-radius: 7px; background: #0a2030; color: #f1f8ff; }
+.admin-win-create button { white-space: nowrap; }
+.admin-win-row { grid-template-columns: 30px minmax(130px,.8fr) minmax(260px,1.2fr); }
+.admin-win-form { grid-template-columns: minmax(100px,1fr) 88px auto; }
+.admin-win-form input[type=text] { color: #edf8ff; font-weight: 600; }
+.admin-win-form input[type=number] { color: #ffc56a; }
+@media (max-width: 700px) {
+  .admin-win-create { grid-template-columns: minmax(0,1fr) 100px; }
+  .admin-win-create button { grid-column: 1 / -1; }
+  .admin-win-row { grid-template-columns: 28px minmax(0,1fr); }
+  .admin-win-form { grid-column: 2; grid-template-columns: minmax(0,1fr) 75px auto; }
+}
+
+.community-header { width: min(1000px, calc(100% - 28px)); }
+@media (max-width: 700px) {
+  .community-header { width: calc(100% - 16px); }
+  .admin-win-row { grid-template-columns: 28px minmax(0,1fr); gap: 8px; padding: 10px; }
+  .admin-win-identity { grid-column: 2; }
+  .admin-win-form { grid-column: 2; grid-template-columns: minmax(0,1fr) 75px auto; }
+  .admin-win-create { grid-template-columns: minmax(0,1fr) 100px; }
+  .admin-win-create button { grid-column: 1 / -1; }
+}

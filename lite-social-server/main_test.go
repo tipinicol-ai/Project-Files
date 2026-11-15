@@ -22,7 +22,7 @@ func setupAuth(t *testing.T, users map[string]string, key []byte) {
 	if err := os.MkdirAll(filesDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	state = State{Users: users, Posts: map[string]Post{}, Profiles: map[string]Profile{}}
+	state = State{Users: users, Posts: map[string]Post{}, Profiles: map[string]Profile{}, Wins: map[string]VictoryRecord{}}
 	sessionKey = key
 	adminUser = ""
 	t.Cleanup(func() {
@@ -115,6 +115,72 @@ func TestAdminRequiresExplicitConfiguredAccount(t *testing.T) {
 	admin(response, request)
 	if response.Code != http.StatusOK {
 		t.Fatalf("configured admin status=%d, want 200", response.Code)
+	}
+}
+
+func TestAdminCanAddManualLeaderboardNameAndWins(t *testing.T) {
+	setupAuth(t, map[string]string{"admin": hash("pw"), "player": hash("pw")}, []byte("01234567890123456789012345678901"))
+	adminUser = "admin"
+	form := url.Values{"name": {"ClutchWolf"}, "wins": {"18"}}
+	forged := httptest.NewRequest(http.MethodPost, "/admin/wins", strings.NewReader(form.Encode()))
+	forged.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	forged.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("player")})
+	denied := httptest.NewRecorder()
+	adminWins(denied, forged)
+	if denied.Code != http.StatusForbidden {
+		t.Fatalf("ordinary account could modify wins: status=%d", denied.Code)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/admin/wins", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("admin")})
+	w := httptest.NewRecorder()
+	adminWins(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("admin wins status=%d, body=%s", w.Code, w.Body.String())
+	}
+	record, ok := state.Wins["clutchwolf"]
+	if !ok || record.Name != "ClutchWolf" || record.Wins != 18 || record.UpdatedBy != "admin" {
+		t.Fatalf("manual win record was not saved with its audit data: %#v", record)
+	}
+	ranking := leaderboardLocked()
+	if len(ranking) != 1 || ranking[0].User != "ClutchWolf" || ranking[0].Wins != 18 {
+		t.Fatalf("manual name missing from public leaderboard: %#v", ranking)
+	}
+	edit := url.Values{"oldName": {"ClutchWolf"}, "name": {"ClutchWolf Pro"}, "wins": {"24"}}
+	update := httptest.NewRequest(http.MethodPost, "/admin/wins", strings.NewReader(edit.Encode()))
+	update.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	update.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("admin")})
+	updated := httptest.NewRecorder()
+	adminWins(updated, update)
+	if updated.Code != http.StatusSeeOther || len(state.Wins) != 1 || state.Wins["clutchwolf pro"].Wins != 24 {
+		t.Fatalf("manual leaderboard edit failed: status=%d records=%#v", updated.Code, state.Wins)
+	}
+}
+
+func TestAdminConsoleLinkIsNotShownInProfile(t *testing.T) {
+	setupAuth(t, map[string]string{"admin": hash("pw")}, []byte("01234567890123456789012345678901"))
+	adminUser = "admin"
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("admin")})
+	w := httptest.NewRecorder()
+	home(w, r)
+	if strings.Contains(w.Body.String(), `href="/admin"`) {
+		t.Fatal("admin console link should not appear in the profile menu")
+	}
+}
+
+func TestHomeShowsLeaderboardInDescendingWinOrder(t *testing.T) {
+	setupAuth(t, map[string]string{"viewer": hash("pw")}, []byte("01234567890123456789012345678901"))
+	state.Wins["runner"] = VictoryRecord{Name: "Runner", Wins: 3}
+	state.Wins["champ"] = VictoryRecord{Name: "Champion", Wins: 20}
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("viewer")})
+	w := httptest.NewRecorder()
+	home(w, r)
+	body := w.Body.String()
+	champ, runner := strings.Index(body, ">Champion<"), strings.Index(body, ">Runner<")
+	if champ < 0 || runner < 0 || champ >= runner {
+		t.Fatalf("leaderboard did not put the highest-win player first: champion index=%d runner index=%d", champ, runner)
 	}
 }
 
