@@ -28,6 +28,10 @@ Solo esa cuenta firmada podrá consultar la consola y realizar moderación. No h
 
 En `/admin`, escribe el nombre o alias y la cantidad de victorias para agregar una entrada. Luego puedes editar el nombre y el número directamente en su fila. Los jugadores del ranking no necesitan tener una cuenta. La comunidad muestra las entradas ordenadas de mayor a menor; el registro conserva qué cuenta administradora guardó el último cambio y la fecha. El acceso a la consola no aparece en el menú de perfil.
 
+## Feed y perfiles de comunidad
+
+El feed enlaza los nombres y avatares con perfiles públicos que muestran foto, juego, presentación, estadísticas de participación, publicaciones y puesto en victorias cuando corresponde. La biografía se edita desde el menú del perfil. Las reacciones y comentarios se publican sin recargar el feed; las tarjetas usan fechas relativas para que la actividad reciente sea fácil de reconocer.
+
 ## Distribución Windows x64
 
 En Windows, desde esta carpeta, se puede generar el ejecutable portable, el ZIP y el instalador NSIS así:
@@ -45,6 +49,6 @@ El servidor escucha en el puerto 8787 por defecto. Inicia el ejecutable, revisa 
 
 ## Publicaciones y medios
 
-Los comentarios se envían sin recargar la página, por lo que el video conserva su reproducción; los formularios tradicionales siguen disponibles si JavaScript está desactivado. Se puede buscar y filtrar el feed, editar el texto o reemplazar medios, y cambiar la imagen de perfil. La consola muestra publicaciones recientes, permite buscar y moderar y refresca la actividad periódicamente.
+Las reacciones y comentarios se envían sin recargar la página, por lo que el video conserva su reproducción; los formularios tradicionales de publicación siguen disponibles si JavaScript está desactivado. Se puede buscar y filtrar el feed, editar el texto o reemplazar medios, y cambiar la imagen y biografía del perfil. La consola muestra publicaciones recientes, permite buscar y moderar y refresca la actividad periódicamente.
 
 El servidor acepta imágenes y los contenedores de video MP4/M4V, WebM, OGV/OGG y MOV, entre otros adjuntos permitidos por extensión. El tamaño máximo de medios es 500 MiB; el de fotos de perfil, 5 MiB. La compatibilidad de reproducción depende del códec; se recomienda MP4 H.264/AAC o WebM VP8/VP9.

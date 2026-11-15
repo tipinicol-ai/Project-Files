@@ -26,6 +26,22 @@ document.addEventListener('DOMContentLoaded', () => {
     finally { button.disabled = false; }
   }));
 
+  document.querySelectorAll('.reaction-form').forEach(form => form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const button = form.querySelector('button');
+    const count = button.querySelector('em');
+    button.disabled = true;
+    try {
+      const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error('No se pudo guardar la reacción.');
+      const result = await response.json();
+      count.textContent = result.count;
+      button.classList.add('reaction-pulse');
+      window.setTimeout(() => button.classList.remove('reaction-pulse'), 450);
+    } catch (err) { alert(err.message); }
+    finally { button.disabled = false; }
+  }));
+
   const search = document.querySelector('#post-search');
   const filter = document.querySelector('#post-filter');
   const empty = document.querySelector('#empty-state');

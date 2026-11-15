@@ -42,6 +42,7 @@ type Post struct {
 type Profile struct {
 	Game  string
 	Photo string
+	Bio   string
 }
 type VictoryRecord struct {
 	Name      string
@@ -91,6 +92,7 @@ func main() {
 	http.HandleFunc("/admin/delete", adminDelete)
 	http.HandleFunc("/admin/wins", adminWins)
 	http.HandleFunc("/profile", profile)
+	http.HandleFunc("/user", viewProfile)
 	http.HandleFunc("/profile/photo", profilePhoto)
 	http.HandleFunc("/delete", deletePost)
 	http.HandleFunc("/edit", editPost)
@@ -296,7 +298,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 	mu.Unlock()
 	sort.Slice(posts, func(i, j int) bool { return posts[i].At.After(posts[j].At) })
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf(`<header class="community-header"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"><details class="profile"><summary aria-label="Mi perfil"><span class="profile-trigger">%s</span></summary><section class="profile-menu"><div class="profile-heading">%s<div><strong>%s</strong><small>Mi perfil</small></div></div><form method="post" action="/profile"><label>Juego que juegas<input name="game" value="%s" maxlength="80" placeholder="Ej. Dota 2"></label><button class="btn profile-save">Guardar perfil</button></form><form class="photo-form" method="post" action="/profile/photo" enctype="multipart/form-data"><label>Foto de perfil<input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required></label><button class="btn profile-save">Cambiar foto</button></form><a class="profile-link" href="/logout">Cerrar sesión</a></section></details></header><div class="community-layout"><aside class="leaderboard-panel" aria-labelledby="leaderboard-title"><div class="leaderboard-heading"><span class="leaderboard-kicker">CLASIFICACIÓN</span><h2 id="leaderboard-title">Top de victorias</h2><p>Los jugadores con más triunfos</p></div><ol class="leaderboard-list">`, avatarHTML(u, prof.Photo, "avatar"), avatarHTML(u, prof.Photo, "avatar"), template.HTMLEscapeString(u), template.HTMLEscapeString(prof.Game)))
+	b.WriteString(fmt.Sprintf(`<header class="community-header"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"><details class="profile"><summary aria-label="Mi perfil"><span class="profile-trigger">%s</span></summary><section class="profile-menu"><div class="profile-heading">%s<div><strong>%s</strong><small>Mi perfil</small></div></div><a class="profile-link" href="%s">Ver mi perfil público</a><form method="post" action="/profile"><label>Juego que juegas<input name="game" value="%s" maxlength="80" placeholder="Ej. Dota 2"></label><label>Sobre mí<textarea name="bio" maxlength="240" placeholder="Una breve presentación para la comunidad">%s</textarea></label><button class="btn profile-save">Guardar perfil</button></form><form class="photo-form" method="post" action="/profile/photo" enctype="multipart/form-data"><label>Foto de perfil<input type="file" name="photo" accept="image/png,image/jpeg,image/webp" required></label><button class="btn profile-save">Cambiar foto</button></form><a class="profile-link" href="/logout">Cerrar sesión</a></section></details></header><div class="community-layout"><aside class="leaderboard-panel" aria-labelledby="leaderboard-title"><div class="leaderboard-heading"><span class="leaderboard-kicker">CLASIFICACIÓN</span><h2 id="leaderboard-title">Top de victorias</h2><p>Los jugadores con más triunfos</p></div><ol class="leaderboard-list">`, avatarHTML(u, prof.Photo, "avatar"), avatarHTML(u, prof.Photo, "avatar"), template.HTMLEscapeString(u), profileURL(u), template.HTMLEscapeString(prof.Game), template.HTMLEscapeString(prof.Bio)))
 	if len(ranking) == 0 {
 		b.WriteString(`<li class="leaderboard-empty">Aún no hay victorias registradas.</li>`)
 	} else {
@@ -314,7 +316,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 		} else if strings.HasPrefix(mime.TypeByExtension(ext), "image/") {
 			kind = "image"
 		}
-		b.WriteString(`<article class="post neon-frame" data-kind="` + kind + `" data-search="` + template.HTMLEscapeString(strings.ToLower(p.Author+" "+p.Caption)) + `"><header class="post-header"><div class="post-author">` + avatarHTML(p.Author, profiles[p.Author].Photo, "avatar post-avatar") + `<div><strong>` + template.HTMLEscapeString(p.Author) + `</strong><small>` + p.At.Format("02/01/2006 15:04") + `</small></div></div>`)
+		b.WriteString(`<article class="post neon-frame" data-kind="` + kind + `" data-search="` + template.HTMLEscapeString(strings.ToLower(p.Author+" "+p.Caption)) + `"><header class="post-header"><a class="post-author post-author-link" href="` + template.HTMLEscapeString(profileURL(p.Author)) + `">` + avatarHTML(p.Author, profiles[p.Author].Photo, "avatar post-avatar") + `<div><strong>` + template.HTMLEscapeString(p.Author) + `</strong><time datetime="` + p.At.Format(time.RFC3339) + `" title="` + p.At.Format("02/01/2006 15:04") + `">` + timeAgo(p.At) + `</time></div></a>`)
 		if p.Author == u {
 			b.WriteString(`<details class="post-menu"><summary aria-label="Opciones de publicación">•••</summary><div><button type="button" class="edit-open" data-id="` + template.HTMLEscapeString(p.ID) + `" data-caption="` + template.HTMLEscapeString(p.Caption) + `">Editar video</button><form method="post" action="/delete" onsubmit="return confirm('¿Eliminar esta publicación?')"><input type="hidden" name="id" value="` + template.HTMLEscapeString(p.ID) + `"><button>Eliminar</button></form></div></details>`)
 		}
@@ -331,7 +333,7 @@ func home(w http.ResponseWriter, r *http.Request) {
 		}
 		b.WriteString(`<div class="reactions" aria-label="Reacciones">`)
 		for _, x := range reactions {
-			b.WriteString(fmt.Sprintf(`<form method="post" action="/react"><input type="hidden" name="id" value="%s"><input type="hidden" name="key" value="%s"><button class="reaction" title="%s"><span>%s</span><em>%d</em></button></form>`, template.HTMLEscapeString(p.ID), x.Key, x.Label, x.Emoji, p.Reactions[x.Key]))
+			b.WriteString(fmt.Sprintf(`<form class="reaction-form" method="post" action="/react"><input type="hidden" name="id" value="%s"><input type="hidden" name="key" value="%s"><button class="reaction" title="%s" aria-label="%s"><span>%s</span><em>%d</em></button></form>`, template.HTMLEscapeString(p.ID), x.Key, x.Label, x.Label, x.Emoji, p.Reactions[x.Key]))
 		}
 		b.WriteString(`</div><div class="comments" data-post="` + template.HTMLEscapeString(p.ID) + `"><p class="comments-count">Comentarios (` + fmt.Sprint(len(p.Comments)) + `)</p><div class="comment-list">`)
 		for _, c := range p.Comments {
@@ -355,6 +357,125 @@ func firstRune(s string) string {
 	}
 	return string(r[0])
 }
+
+func profileURL(name string) string { return "/user?name=" + url.QueryEscape(name) }
+
+func timeAgo(t time.Time) string {
+	minutes := int(time.Since(t).Minutes())
+	if minutes < 1 {
+		return "Ahora"
+	}
+	if minutes < 60 {
+		return fmt.Sprintf("Hace %d min", minutes)
+	}
+	hours := minutes / 60
+	if hours < 24 {
+		return fmt.Sprintf("Hace %d h", hours)
+	}
+	days := hours / 24
+	if days < 7 {
+		return fmt.Sprintf("Hace %d d", days)
+	}
+	return t.Format("02/01/2006")
+}
+
+func viewProfile(w http.ResponseWriter, r *http.Request) {
+	if !method(w, r, http.MethodGet) {
+		return
+	}
+	viewer := user(r)
+	if viewer == "" {
+		redirect(w, r, "/login")
+		return
+	}
+	name := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("name")))
+	mu.Lock()
+	if _, exists := state.Users[name]; !exists {
+		mu.Unlock()
+		http.NotFound(w, r)
+		return
+	}
+	profile := state.Profiles[name]
+	posts := make([]Post, 0)
+	for _, post := range state.Posts {
+		if strings.EqualFold(post.Author, name) {
+			posts = append(posts, post)
+		}
+	}
+	profiles := make(map[string]Profile, len(state.Profiles))
+	for account, item := range state.Profiles {
+		profiles[account] = item
+	}
+	ranking := leaderboardLocked()
+	mu.Unlock()
+	sort.Slice(posts, func(i, j int) bool { return posts[i].At.After(posts[j].At) })
+	reactionsCount, commentsCount := 0, 0
+	for _, post := range posts {
+		for _, count := range post.Reactions {
+			reactionsCount += count
+		}
+		commentsCount += len(post.Comments)
+	}
+	place, winCount := 0, 0
+	for i, entry := range ranking {
+		if strings.EqualFold(entry.User, name) {
+			place, winCount = i+1, entry.Wins
+			break
+		}
+	}
+	var b strings.Builder
+	b.WriteString(`<header class="community-header"><a href="/"><img class="community-banner" src="/assets/community-banner.webp" alt="Gamer Community"></a></header><main class="public-profile-page"><a class="back-to-feed" href="/">← Volver a la comunidad</a><section class="public-profile-card"><div class="public-profile-main">` + avatarHTML(name, profile.Photo, "avatar public-profile-avatar") + `<div class="public-profile-identity"><span class="profile-eyebrow">PERFIL DE LA COMUNIDAD</span><h1>` + template.HTMLEscapeString(name) + `</h1><p class="profile-game">`)
+	if profile.Game != "" {
+		b.WriteString(`<span class="game-tag">` + template.HTMLEscapeString(profile.Game) + `</span>`)
+	} else {
+		b.WriteString(`<span class="game-tag muted-tag">Aún no indica su juego</span>`)
+	}
+	b.WriteString(`</p><p class="profile-bio">`)
+	if strings.TrimSpace(profile.Bio) != "" {
+		b.WriteString(template.HTMLEscapeString(profile.Bio))
+	} else {
+		b.WriteString(`<span class="muted-copy">Todavía no agregó una presentación.</span>`)
+	}
+	b.WriteString(`</p></div></div><div class="profile-stats"><div><b>` + fmt.Sprint(len(posts)) + `</b><span>Publicaciones</span></div><div><b>` + fmt.Sprint(reactionsCount) + `</b><span>Reacciones</span></div><div><b>` + fmt.Sprint(commentsCount) + `</b><span>Comentarios</span></div><div class="profile-rank-stat"><b>`)
+	if place > 0 {
+		b.WriteString(fmt.Sprintf("#%d", place))
+	} else {
+		b.WriteString("—")
+	}
+	b.WriteString(`</b><span>`)
+	if place > 0 {
+		b.WriteString(fmt.Sprintf("%d victorias", winCount))
+	} else {
+		b.WriteString("Sin puesto aún")
+	}
+	b.WriteString(`</span></div></div></section><div class="profile-post-heading"><div><span class="profile-eyebrow">EN LA COMUNIDAD</span><h2>Publicaciones de ` + template.HTMLEscapeString(name) + `</h2></div><span class="profile-post-total">` + fmt.Sprint(len(posts)) + ` en total</span></div>`)
+	if len(posts) == 0 {
+		b.WriteString(`<div class="profile-empty"><strong>Este espacio está listo para su primera publicación.</strong><p>Cuando comparta algo, aparecerá aquí para la comunidad.</p></div>`)
+	}
+	for _, post := range posts {
+		ext := strings.ToLower(filepath.Ext(post.File))
+		mediaURL := "/media/" + url.PathEscape(post.File)
+		b.WriteString(`<article class="profile-post"><header class="profile-post-header"><a class="post-author post-author-link" href="` + template.HTMLEscapeString(profileURL(name)) + `">` + avatarHTML(name, profiles[name].Photo, "avatar post-avatar") + `<div><strong>` + template.HTMLEscapeString(name) + `</strong><time datetime="` + post.At.Format(time.RFC3339) + `" title="` + post.At.Format("02/01/2006 15:04") + `">` + timeAgo(post.At) + `</time></div></a></header>`)
+		if post.Caption != "" {
+			b.WriteString(`<p class="profile-post-caption">` + template.HTMLEscapeString(post.Caption) + `</p>`)
+		}
+		if isVideoFile(ext) {
+			b.WriteString(`<video class="profile-post-media" controls playsinline preload="metadata"><source src="` + template.HTMLEscapeString(mediaURL) + `" type="` + template.HTMLEscapeString(videoContentType(ext)) + `"></video>`)
+		} else if strings.HasPrefix(mime.TypeByExtension(ext), "image/") {
+			b.WriteString(`<img class="profile-post-media" src="` + template.HTMLEscapeString(mediaURL) + `" alt="Imagen de ` + template.HTMLEscapeString(name) + `" loading="lazy">`)
+		} else {
+			b.WriteString(`<a class="profile-file-link" href="` + template.HTMLEscapeString(mediaURL) + `">Abrir archivo compartido</a>`)
+		}
+		reactionTotal := 0
+		for _, count := range post.Reactions {
+			reactionTotal += count
+		}
+		b.WriteString(`<footer class="profile-post-footer"><span>♥ ` + fmt.Sprint(reactionTotal) + ` reacciones</span><span>` + fmt.Sprint(len(post.Comments)) + ` comentarios</span></footer></article>`)
+	}
+	b.WriteString(`<footer class="feed-footer">Gamer Community · Tu nexo de juego local</footer></main>`)
+	fmt.Fprint(w, layout("Perfil de "+name, b.String()))
+}
+
 func auth(w http.ResponseWriter, mode, msg string) {
 	reg := mode == "register"
 	title, action, subtitle, banner, foot := "Iniciar sesión", "/login", "Accede a tu cuenta", "/assets/login-banner.jpg", `<a href="/register">Crear una cuenta nueva</a>`
@@ -543,10 +664,16 @@ func profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = r.ParseForm()
+	bio := strings.TrimSpace(r.FormValue("bio"))
+	if len([]rune(bio)) > 240 {
+		http.Error(w, "La presentación no puede superar 240 caracteres", http.StatusBadRequest)
+		return
+	}
 	mu.Lock()
 	p := state.Profiles[u]
 	original := p
 	p.Game = strings.TrimSpace(r.FormValue("game"))
+	p.Bio = bio
 	state.Profiles[u] = p
 	ok := save()
 	if !ok {
@@ -715,32 +842,50 @@ func react(w http.ResponseWriter, r *http.Request) {
 	}
 	mu.Lock()
 	id := r.FormValue("id")
+	key := r.FormValue("key")
 	p, ok := state.Posts[id]
-	if ok {
-		original := p
-		if p.Reactions != nil {
-			original.Reactions = make(map[string]int, len(p.Reactions))
-			for key, count := range p.Reactions {
-				original.Reactions[key] = count
-			}
-		}
-		for _, x := range reactions {
-			if x.Key == r.FormValue("key") {
-				if p.Reactions == nil {
-					p.Reactions = map[string]int{}
-				}
-				p.Reactions[x.Key]++
-			}
-		}
-		state.Posts[id] = p
-		if !save() {
-			state.Posts[id] = original
-			mu.Unlock()
-			http.Error(w, "No se pudo guardar la reacción", 500)
-			return
+	if !ok {
+		mu.Unlock()
+		http.NotFound(w, r)
+		return
+	}
+	validKey := false
+	for _, reaction := range reactions {
+		if reaction.Key == key {
+			validKey = true
+			break
 		}
 	}
+	if !validKey {
+		mu.Unlock()
+		http.Error(w, "Reacción no válida", http.StatusBadRequest)
+		return
+	}
+	original := p
+	if p.Reactions != nil {
+		original.Reactions = make(map[string]int, len(p.Reactions))
+		for reactionKey, count := range p.Reactions {
+			original.Reactions[reactionKey] = count
+		}
+	}
+	if p.Reactions == nil {
+		p.Reactions = map[string]int{}
+	}
+	p.Reactions[key]++
+	state.Posts[id] = p
+	if !save() {
+		state.Posts[id] = original
+		mu.Unlock()
+		http.Error(w, "No se pudo guardar la reacción", 500)
+		return
+	}
+	count := p.Reactions[key]
 	mu.Unlock()
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"key": key, "count": count})
+		return
+	}
 	redirect(w, r, "/")
 }
 func comment(w http.ResponseWriter, r *http.Request) {

@@ -169,6 +169,25 @@ func TestAdminConsoleLinkIsNotShownInProfile(t *testing.T) {
 	}
 }
 
+func TestPublicProfileShowsIdentityPostsAndRanking(t *testing.T) {
+	setupAuth(t, map[string]string{"viewer": hash("pw"), "alice": hash("pw")}, []byte("01234567890123456789012345678901"))
+	state.Profiles["alice"] = Profile{Game: "Valorant", Bio: "Juego con la comunidad"}
+	state.Posts["alice-post"] = Post{ID: "alice-post", File: "match.png", Caption: "¡GG equipo!", Author: "alice", At: time.Now(), Reactions: map[string]int{"gg": 4}, Comments: []Comment{{User: "viewer", Text: "Bien jugado"}}}
+	state.Wins["alice"] = VictoryRecord{Name: "Alice", Wins: 12}
+	r := httptest.NewRequest(http.MethodGet, "/user?name=alice", nil)
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("viewer")})
+	w := httptest.NewRecorder()
+	viewProfile(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("profile status=%d, body=%s", w.Code, w.Body.String())
+	}
+	for _, want := range []string{"Juego con la comunidad", "Valorant", "¡GG equipo!", "#1", "12 victorias", "4", "1 comentarios"} {
+		if !strings.Contains(w.Body.String(), want) {
+			t.Errorf("profile missing %q", want)
+		}
+	}
+}
+
 func TestHomeShowsLeaderboardInDescendingWinOrder(t *testing.T) {
 	setupAuth(t, map[string]string{"viewer": hash("pw")}, []byte("01234567890123456789012345678901"))
 	state.Wins["runner"] = VictoryRecord{Name: "Runner", Wins: 3}
@@ -203,6 +222,21 @@ func TestCommentRequiresExistingPostAndReturnsJSON(t *testing.T) {
 	}
 	if got.User != "gamer" || got.Text != "GG buena partida" {
 		t.Fatalf("unexpected comment: %#v", got)
+	}
+}
+
+func TestReactionAjaxReturnsUpdatedCount(t *testing.T) {
+	setupAuth(t, map[string]string{"gamer": hash("pw")}, []byte("01234567890123456789012345678901"))
+	state.Posts["p"] = Post{ID: "p", Author: "gamer", Reactions: map[string]int{"gg": 2}}
+	form := url.Values{"id": {"p"}, "key": {"gg"}}
+	r := httptest.NewRequest(http.MethodPost, "/react", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Accept", "application/json")
+	r.AddCookie(&http.Cookie{Name: "pf_user", Value: signSession("gamer")})
+	w := httptest.NewRecorder()
+	react(w, r)
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"count":3`) {
+		t.Fatalf("reaction AJAX response=%d %s", w.Code, w.Body.String())
 	}
 }
 
