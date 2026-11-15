@@ -1,6 +1,6 @@
 Unicode True
 Name "Project Files Social Server Lite"
-OutFile "dist\Project-Files-Social-Server-Lite-Setup-0.6.0.exe"
+OutFile "dist\Project-Files-Social-Server-Lite-Setup-0.7.0.exe"
 InstallDir "$PROGRAMFILES64\Project Files Social Server Lite"
 RequestExecutionLevel admin
 Icon "assets\icon.ico"

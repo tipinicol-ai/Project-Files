@@ -353,3 +353,92 @@ body.theme-ocean .game-tag, body.theme-ember .game-tag, body.theme-forest .game-
 .profile-menu select { display: block; width: 100%; margin-top: 7px; padding: 9px 10px; border: 1px solid rgba(92,201,239,.42); border-radius: 7px; background: #071725; color: #eff8ff; font: inherit; font-size: 12px; }
 .profile-menu select:focus, .profile-menu textarea:focus, .profile-menu input:focus { border-color: var(--profile-accent, #4bd8f2); box-shadow: 0 0 0 2px var(--profile-glow, rgba(37,198,232,.19)); }
 @media (max-width: 600px) { .profile-cover { height: 126px; } .profile-badge { font-size: 10px; } }
+
+
+/* Diseño compacto: acceso, registro y feed visibles antes en la pantalla */
+.auth-page { min-height: 100svh; justify-content: center; gap: 0; padding: clamp(10px, 2vh, 22px) 14px; }
+.auth-banner { width: min(100%, 760px); max-height: clamp(96px, 22vh, 170px); aspect-ratio: 4.6 / 1; border-radius: 16px; }
+.auth-card { width: min(420px, 100%); margin: clamp(10px, 2vh, 18px) 0 0; padding: 20px 24px 17px; border-radius: 16px; }
+.auth-card h1 { font-size: clamp(24px, 3.2vw, 30px); }
+.auth-subtitle { margin: 6px 0 13px; font-size: 13px; }
+.auth-form { gap: 10px; }
+.auth-field { min-height: 44px; gap: 9px; padding: 0 11px; border-radius: 9px; }
+.auth-field > span { font-size: 18px; }
+.auth-field input { font-size: 15px; }
+.auth-submit { min-height: 42px; margin-top: 1px; font-size: 14px; }
+.auth-footer { margin-top: 12px; font-size: 13px; }
+.error { margin-bottom: 10px; padding: 8px 10px; font-size: 12px; }
+.community-header { width: min(960px, calc(100% - 24px)); margin-bottom: 9px; }
+.community-banner { aspect-ratio: 1024 / 135; max-height: 142px; border-radius: 0 0 10px 10px; }
+.community-layout { grid-template-columns: minmax(195px, 245px) minmax(0, 660px); gap: 12px; width: min(930px, calc(100% - 24px)); }
+.leaderboard-heading { padding: 12px 13px 10px; }
+.leaderboard-heading h2 { font-size: 17px; }
+.leaderboard-list { gap: 5px; padding: 8px; }
+.leaderboard-entry { gap: 7px; padding: 7px; }
+.leaderboard-rank { width: 23px; height: 23px; }
+.composer { gap: 9px; margin-bottom: 9px; padding: 9px 11px; }
+.composer-avatar { width: 34px; height: 34px; flex-basis: 34px; }
+.composer input[name="caption"] { height: 34px; }
+.post { margin-bottom: 9px; padding: 10px; }
+.caption { margin: 8px 0; line-height: 1.4; }
+.media { max-height: min(390px, 52vh); margin: 8px 0; }
+.reactions { gap: 5px; margin: 6px 0 7px; }
+.comment { margin-top: 6px; padding: 6px 8px; }
+.feed-footer { padding: 10px 0; }
+@media (max-width: 850px) {
+  .community-layout { grid-template-columns: minmax(0, 1fr); width: min(680px, calc(100% - 20px)); gap: 8px; }
+  .leaderboard-panel { max-height: 164px; }
+  .leaderboard-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 8px; padding: 8px 11px 5px; }
+  .leaderboard-heading h2 { margin: 0; font-size: 15px; }
+  .leaderboard-heading p { margin-left: auto; font-size: 10px; }
+  .leaderboard-kicker { font-size: 8px; }
+  .leaderboard-list { display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain; padding: 6px 8px 8px; scrollbar-width: thin; }
+  .leaderboard-entry { flex: 0 0 min(205px, 72vw); min-height: 45px; }
+  .leaderboard-note { display: none; }
+}
+@media (max-width: 600px) {
+  .auth-page { justify-content: flex-start; padding: max(8px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)); }
+  .auth-banner { width: 100%; max-height: 112px; aspect-ratio: 3.4 / 1; border-radius: 12px; }
+  .auth-card { width: min(410px, 100%); margin-top: 12px; padding: 18px 17px 15px; }
+  .auth-card h1 { font-size: 25px; }
+  .auth-subtitle { margin: 5px 0 12px; font-size: 12px; }
+  .auth-form { gap: 9px; }
+  .auth-field { min-height: 43px; }
+  .auth-submit { min-height: 41px; }
+  .auth-footer { margin-top: 10px; font-size: 12px; }
+  .community-header { width: calc(100% - 12px); margin-bottom: 6px; }
+  .community-banner { min-height: 0; max-height: 100px; aspect-ratio: 4.4 / 1; border-radius: 0 0 8px 8px; }
+  .profile { top: 6px; right: 7px; }
+  .profile > summary { min-width: 42px; height: 38px; }
+  .profile-trigger { min-width: 40px; height: 36px; padding: 2px 7px; border-radius: 9px; font-size: 11px; }
+  .community-layout { width: calc(100% - 12px); gap: 7px; }
+  .leaderboard-panel { max-height: 138px; border-radius: 11px; }
+  .leaderboard-heading { gap: 2px 6px; padding: 6px 9px 3px; }
+  .leaderboard-heading p { display: none; }
+  .leaderboard-list { padding: 5px 7px 7px; }
+  .leaderboard-entry { flex-basis: min(185px, 72vw); min-height: 40px; padding: 5px 7px; }
+  .leaderboard-player strong { font-size: 11px; }
+  .feed { width: 100%; }
+  .composer { gap: 7px; margin-bottom: 7px; padding: 7px; }
+  .composer-avatar { width: 30px; height: 30px; flex-basis: 30px; }
+  .composer input[name="caption"] { height: 32px; }
+  .media-button { min-height: 32px; padding: 6px 9px; font-size: 10px; }
+  .publish-button { min-height: 32px; padding: 6px 12px; }
+  .feed-tools { gap: 6px; margin-bottom: 7px; }
+  .feed-tools input, .feed-tools select { padding: 7px 9px; font-size: 12px; }
+  .post { margin-bottom: 7px; padding: 8px; border-radius: 12px; }
+  .post-avatar { width: 30px; height: 30px; flex-basis: 30px; }
+  .caption { margin: 7px 0; font-size: 13px; }
+  .media { max-height: 42vh; margin: 7px 0; }
+  .reaction { min-height: 28px; padding: 4px 7px; }
+  .reaction span { font-size: 15px; }
+  .comments { margin-top: 7px; }
+}
+@media (max-height: 720px) and (min-width: 601px) {
+  .auth-page { padding-top: 8px; padding-bottom: 8px; }
+  .auth-banner { max-height: 125px; }
+  .auth-card { margin-top: 10px; padding-top: 15px; padding-bottom: 13px; }
+  .auth-form { gap: 8px; }
+  .auth-field { min-height: 40px; }
+  .auth-submit { min-height: 38px; }
+}
