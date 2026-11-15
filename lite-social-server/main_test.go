@@ -67,7 +67,7 @@ func TestHomeRendersMediaAndProfileForValidSignedSession(t *testing.T) {
 	response := httptest.NewRecorder()
 	home(response, request)
 	body := response.Body.String()
-	for _, want := range []string{`src="/assets/community-banner.webp"`, `<details class="profile">`, `<a class="profile-link" href="/logout">Cerrar sesión</a>`, `<video class="media" data-post="video-id" controls playsinline preload="metadata"`, `src="/media/preview%20clip.mp4"`, `name="file"`, `id="post-search"`} {
+	for _, want := range []string{`src="/assets/community-banner-clean.webp"`, `<details class="profile">`, `<a class="profile-link" href="/logout">Cerrar sesión</a>`, `<video class="media" data-post="video-id" controls playsinline preload="metadata"`, `src="/media/preview%20clip.mp4"`, `name="file"`, `id="post-search"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page missing %q", want)
 		}
@@ -319,12 +319,24 @@ func TestLogoutExpiresSessionCookie(t *testing.T) {
 }
 
 func TestEmbeddedAssetsAndInstallerIconExist(t *testing.T) {
-	for _, name := range []string{"assets/login-banner.jpg", "assets/register-banner.webp", "assets/community-banner.webp", "assets/lite-social.css", "assets/app.js", "assets/admin.js", "assets/icon.png", "assets/icon.ico"} {
+	for _, name := range []string{"assets/login-banner-clean.webp", "assets/register-banner-clean.webp", "assets/community-banner-clean.webp", "assets/lite-social.css", "assets/app.js", "assets/admin.js", "assets/icon.png", "assets/icon.ico"} {
 		if _, err := embeddedAssets.ReadFile(name); err != nil {
 			t.Errorf("embedded asset %q: %v", name, err)
 		}
 	}
 	if _, err := os.Stat("assets/icon.ico"); err != nil {
 		t.Fatalf("installer icon missing: %v", err)
+	}
+}
+
+func TestAuthUsesCleanHighResolutionBanners(t *testing.T) {
+	for _, test := range []struct {
+		mode, want string
+	}{{"login", "/assets/login-banner-clean.webp"}, {"register", "/assets/register-banner-clean.webp"}} {
+		w := httptest.NewRecorder()
+		auth(w, test.mode, "")
+		if !strings.Contains(w.Body.String(), `src="`+test.want+`"`) {
+			t.Errorf("%s page did not use clean banner %q", test.mode, test.want)
+		}
 	}
 }

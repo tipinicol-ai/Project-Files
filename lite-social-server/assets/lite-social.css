@@ -442,3 +442,13 @@ body.theme-ocean .game-tag, body.theme-ember .game-tag, body.theme-forest .game-
   .auth-field { min-height: 40px; }
   .auth-submit { min-height: 38px; }
 }
+
+
+/* Banners limpiados en alta resolución: conservar el arte y su proporción original */
+.auth-banner { aspect-ratio: 2688 / 795; max-height: none; object-fit: contain; background: transparent; image-rendering: auto; }
+.community-banner { aspect-ratio: 2688 / 509; min-height: 0; max-height: none; height: auto; object-fit: contain; image-rendering: auto; }
+.admin-header img { aspect-ratio: 2688 / 509; height: auto; object-fit: contain; }
+@media (max-width: 600px) {
+  .auth-banner { aspect-ratio: 2688 / 795; max-height: none; }
+  .community-banner { aspect-ratio: 2688 / 509; max-height: none; min-height: 0; }
+}

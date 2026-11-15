@@ -34,6 +34,8 @@ El feed enlaza los nombres y avatares con perfiles públicos que muestran foto, 
 
 Cada persona puede elegir entre cinco temas de color, una insignia decorativa y subir una portada PNG, JPG o WebP de hasta 5 MiB. Las insignias son etiquetas visuales elegidas por el usuario, no verificaciones oficiales. Los archivos y preferencias se guardan con el perfil y los campos nuevos son opcionales para las cuentas existentes.
 
+Los banners de inicio de sesión, registro y comunidad usan arte limpio de alta resolución, sin etiquetas de títulos de juegos ni controles dibujados dentro de la imagen.
+
 ## Distribución Windows x64
 
 En Windows, desde esta carpeta, se puede generar el ejecutable portable, el ZIP y el instalador NSIS así:
